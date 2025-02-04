@@ -12,7 +12,9 @@ dependencies = [
   "pint>=0.24",
   "pint-pandas>=0.7",
 ]
-
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+readme = "README.md"
 
 [project.optional-dependencies]
 fit = [
@@ -32,16 +34,7 @@ packages = ["medapy"]
 # authors = [
 #   { name="example", email="example" },
 # ]
-# description = "to be added"
-# readme = "README.md"
-# requires-python = ">=3.10"
-# classifiers = [
-#     "Programming Language :: Python :: 3",
-#     "Operating System :: OS Independent",
-# ]
-
-# license = "MIT"
-# license-files = ["LICENSE*"]
+# license-files = ["LICENSE.txt"]
 
 
 
