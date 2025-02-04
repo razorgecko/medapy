@@ -1,0 +1,2 @@
+class UnitOverwriteWarning(UserWarning):
+    pass

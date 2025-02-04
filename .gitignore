@@ -1,0 +1,18 @@
+# Compiled and build files
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+
+# Implement later
+superconductivity/
+decide_later/
+tests/
+examples/
+
+# Internal TODO/notes
+_internal_todo.md
+
+# Packages installed in environment
+recs.txt

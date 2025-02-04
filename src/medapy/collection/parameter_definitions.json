@@ -1,0 +1,23 @@
+{
+    "magnetic_field": {
+        "long_names": ["field", "Field"],
+        "short_names": ["B", "H"],
+        "units": ["T", "Oe", "G", "mT"]
+    },
+
+    "temperature": {
+        "long_names": ["temperature", "Temperature", "temp", "Temp"],
+        "short_names": ["T"],
+        "units": ["K", "mK", "C"]
+    },
+    
+    "position": {
+        "long_names": ["position", "Position", "theta", "Theta"],
+        "short_names": ["pos", "Pos"],
+        "units": ["deg", "Deg", "°"],
+        "special_values": {
+            "OOP": 0,
+            "IP": 90
+        }
+    }
+}
