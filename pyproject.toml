@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "medapy"
-version = "0.1.2-alpha"
+dynamic = ["version"]
 description = "A Python package to work with measured data"
 dependencies = [
   "numpy>=2.2",
@@ -27,9 +27,8 @@ plot = [
 ]
 all = ["medapy[fit, plot]"]
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-packages = ["medapy"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.urls]
 Homepage = "https://github.com/razorgecko/medapy"

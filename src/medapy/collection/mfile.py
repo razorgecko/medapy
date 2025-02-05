@@ -5,7 +5,7 @@ from pathlib import Path
 from decimal import Decimal
 from typing import Iterable
 
-from .parameter import ParameterDefinition, DefinitionsLoader, Parameter
+from .parameter import ParameterDefinition, DefinitionsLoader, Parameter, SweepDirection
 
 
 class Polarization(Enum):
@@ -107,6 +107,91 @@ class MeasurementFile:
         self.parameters = dict()
         self._parse_filename()
 
+    def check(self,
+              contacts: tuple[int, int] | list[tuple[int, int] | int] | int | None = None,
+              polarization: str | Polarization | None = None,
+              sweep_direction: str | SweepDirection | None = None,
+              **parameter_filters: dict) -> bool:
+        """Check if file matches all filter conditions"""
+                
+        # Check contacts
+        if contacts is not None:
+            if not self.check_contacts(contacts):
+                return False
+
+        # Check polarization
+        if polarization is not None:
+            if not self.check_polarization(polarization):
+                return False
+
+        # Check sweep direction
+        if sweep_direction is not None:
+            if not self.check_sweep_direction(sweep_direction):
+                return False
+
+        # Check parameter filters
+        for param_name, filter_value in parameter_filters.items():
+            if not self.check_parameter(param_name, filter_value):
+                return False
+            
+        return True
+
+    def check_polarization(self, polarization: str | Polarization):
+        pol = (polarization if isinstance(polarization, Polarization) 
+                   else Polarization(polarization))
+        return any(pair.type == pol for pair in self.contact_pairs)
+    
+    def check_sweep_direction(self, sweep_direction: str | SweepDirection):
+        direction = (sweep_direction if isinstance(sweep_direction, SweepDirection)
+                       else SweepDirection(sweep_direction.lower()))
+        return any(param.state.sweep_direction == direction 
+                    for param in self.parameters.values())
+            
+    def check_contacts(self,
+                       contacts: tuple[int, int] | list[tuple[int, int] | int] | int) -> bool:
+        """Check if file contains specified contact configuration"""
+
+        # Convert single pair/contact to list
+        if not isinstance(contacts, list):
+            contacts = [contacts]
+
+        # Check if all specified contacts/pairs are present
+        return all(
+            any(pair.pair_matches(check_pair) 
+                for pair in self.contact_pairs)
+            for check_pair in contacts
+        )
+
+    def check_parameter(self,
+                        name: str,
+                        value) -> bool:
+        """Check if parameter matches filter value or range"""
+        param = self.parameters.get(name)
+        if not param:
+            return False
+
+        # Handle exact value
+        if not isinstance(value, Iterable):
+            if param.state.is_swept:
+                return False
+            return param.state.value == param._value2decimal(value)
+
+        # Handle range
+        try:
+            min_val, max_val = map(param._value2decimal, value)
+            if min_val > max_val:
+                min_val, max_val = max_val, min_val
+        except ValueError:
+            raise ValueError("Param range length should be 2; "
+                             f"got {len(value)} for {name}")
+        if param.state.is_swept:
+            # For swept parameter, check if sweep range overlaps with filter range
+            return (param.state.min_val <= max_val and 
+                   param.state.max_val >= min_val)
+
+        # For fixed parameter, check if value is within range
+        return min_val <= param.state.value <= max_val
+    
     def _parse_filename(self) -> None:
         # Get filename without extension
         name = self.path.stem

@@ -1,11 +1,9 @@
 from typing import Iterator, Union, Tuple, Iterable
 from pathlib import Path
-from decimal import Decimal
 
 from medapy.collection import (MeasurementFile,
                                Polarization,
                                SweepDirection,
-                               ContactPair,
                                ParameterDefinition)
                                
 
@@ -55,12 +53,11 @@ class MeasurementCollection:
             Iterator of matching MeasurementFile instances
         """
         for meas_file in self.files:
-            if self._matches_all_filters(
-                meas_file, 
+            if meas_file.check(
                 contacts, 
                 polarization, 
                 sweep_direction, 
-                parameter_filters
+                **parameter_filters
             ):
                 yield meas_file
 
@@ -92,88 +89,6 @@ class MeasurementCollection:
             parameters=self.param_definitions.values(),
             separator=self.separator
         )
-    
-    def _matches_all_filters(self,
-                           meas_file: MeasurementFile,
-                           contacts,
-                           polarization,
-                           sweep_direction,
-                           parameter_filters: dict) -> bool:
-        """Check if file matches all filter conditions"""
-                
-        # Check contacts
-        if contacts is not None:
-            if not self._check_contacts(meas_file.contact_pairs, contacts):
-                return False
-
-        # Check polarization
-        if polarization is not None:
-            pol = (polarization if isinstance(polarization, Polarization) 
-                   else Polarization(polarization))
-            if not any(pair.type == pol for pair in meas_file.contact_pairs):
-                return False
-
-        # Check sweep direction
-        if sweep_direction is not None:
-            direction = (sweep_direction if isinstance(sweep_direction, SweepDirection)
-                       else SweepDirection(sweep_direction.lower()))
-            if not any(param.state.sweep_direction == direction 
-                      for param in meas_file.parameters.values()):
-                return False
-
-        # Check parameter filters
-        for param_name, filter_value in parameter_filters.items():
-            if not self._check_parameter(meas_file, param_name, filter_value):
-                return False
-            
-        return True
-
-    def _check_contacts(self,
-                       file_pairs: list[ContactPair],
-                       filter_contacts) -> bool:
-        """Check if file contains specified contact configuration"""
-
-        # Convert single pair/contact to list
-        if not isinstance(filter_contacts, list):
-            filter_contacts = [filter_contacts]
-
-        # Check if all specified contacts/pairs are present
-        return all(
-            any(pair.pair_matches(filter_pair) 
-                for pair in file_pairs)
-            for filter_pair in filter_contacts
-        )
-
-    def _check_parameter(self,
-                        meas_file: MeasurementFile,
-                        param_name: str,
-                        filter_value) -> bool:
-        """Check if parameter matches filter value or range"""
-        param = meas_file.parameters.get(param_name)
-        if not param:
-            return False
-
-        # Handle exact value
-        if not isinstance(filter_value, Iterable):
-            if param.state.is_swept:
-                return False
-            return param.state.value == Decimal(str(filter_value))
-
-        # Handle range
-        try:
-            min_val, max_val = map(lambda x: Decimal(str(x)), filter_value)
-            if min_val > max_val:
-                min_val, max_val = max_val, min_val
-        except ValueError:
-            raise ValueError("Param range length should be 2; "
-                             f"got {len(filter_value)} for {param_name}")
-        if param.state.is_swept:
-            # For swept parameter, check if sweep range overlaps with filter range
-            return (param.state.min_val <= max_val and 
-                   param.state.max_val >= min_val)
-
-        # For fixed parameter, check if value is within range
-        return min_val <= param.state.value <= max_val
 
     def __iter__(self) -> Iterator[MeasurementFile]:
         """Iterate over all measurement files"""

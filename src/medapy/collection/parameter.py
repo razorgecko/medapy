@@ -36,8 +36,8 @@ class ParameterDefinition:
         self.long_names = frozenset(self.long_names)
         self.short_names = frozenset(self.short_names)
         self.units = frozenset(self.units)
-        if not isinstance(self.special_values, MappingProxyType):
-            self.special_values = MappingProxyType(self.special_values or {})
+        self.special_values = MappingProxyType(
+            {key: Decimal(str(val)) for key, val in (self.special_values or {}).items()})
         if not isinstance(self.patterns, MappingProxyType):
             self.patterns = MappingProxyType(self.patterns or {})
     
@@ -174,7 +174,7 @@ class Parameter:
     def _value2decimal(self, value_str):
         """Convert string value to Decimal, handling special values"""
         if value_str in self.definition.special_values:
-            return Decimal(self.definition.special_values[value_str])
+            return self.definition.special_values[value_str]
         return Decimal(value_str)
     
     def __str__(self):

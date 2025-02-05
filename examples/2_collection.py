@@ -93,7 +93,7 @@ files_specific = collection.filter_generator(
     contacts=[pair, (3, 7)],
     polarization='I',  # current mode
     temperature=(2, 10),
-    position=[45, 90]
+    position=[45, 'IP']
 )
 print_files(files_specific, header='Files filtered in a specific way')
 
