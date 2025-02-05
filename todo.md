@@ -20,7 +20,7 @@
 - [ ] Reading file metadata to fill parameters
 - [ ] Datetime stamps for MeasurementFile (from name or system metadata)
 - [ ] Consider storing parameter definitions in yaml instead of json
-- - PyYAML package is installed with some of the dependencies
+      PyYAML package is already installed with some of the dependencies
 
 ## accessors
 - [ ] Split 'etr' to 'ppc' (post-process?) and 'etr' (?)

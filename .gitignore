@@ -9,7 +9,6 @@ dist/
 superconductivity/
 decide_later/
 tests/
-examples/
 
 # Internal TODO/notes
 _internal_todo.md
