@@ -27,6 +27,8 @@ plot = [
 ]
 all = ["medapy[fit, plot]"]
 
+[tool.setuptools_scm]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
