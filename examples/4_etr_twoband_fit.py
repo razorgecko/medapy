@@ -61,12 +61,6 @@ xy.ms.init_msheet(translations=custom_unit_dict, patch_rename=True)
 
 
 # Validate that x axis (Field column) is monotonously increasing
-# The data in testfiles is not monotonic, so we sort using pandas method
-xx = xx.sort_values(by='Field')
-xy = xy.sort_values(by='Field')
-
-# Check before proceeding to data analysis
-# Comment the sorting above to see if this work
 xx.etr.ensure_increasing(inplace=True)
 xy.etr.ensure_increasing(inplace=True)
 
