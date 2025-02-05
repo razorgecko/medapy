@@ -20,6 +20,9 @@ df.ms.add_label('R', 'Resistance')
 df.ms.add_label('rho', 'Resistivity')
 
 # Check various methods to access data
+# Accessing by label returns pd.Series with pint units
+# Accessing by axis return pd.Series cleared of units
+# For processing, it's preferred to pass data as axes
 print(f'Standard df access:\n{df["Field"]}\n')
 print(f'MS access by column:\n{df.ms["Field"]}\n')
 print(f'MS access by label:\n{df.ms["H"]}\n')

@@ -164,7 +164,7 @@ def fit_twoband(field: np.ndarray,
         if isinstance(report, bool):
             print(report_text)
         elif isinstance(report, (str, Path)):
-            with open(report, 'a') as f:
+            with open(report, 'w') as f:
                 print(report_text, file=f)
         else: # TextIO
             print(report_text, file=report)

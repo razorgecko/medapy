@@ -15,14 +15,15 @@
 - [ ] Methods 'to_preferred_units' and 'set_preferred_units'
 
 ## collection
+- [ ] Fix: Special values doesn't work in collection.filter (Error with Decimal)
 - [ ] Methods 'append' and 'extend' for MeasurementCollection mimicking list
 - [ ] SI prefix recognition and conversion when parsing units in Parameter
 - [ ] Reading file metadata to fill parameters
 - [ ] Datetime stamps for MeasurementFile (from name or system metadata)
-- [ ] Consider storing parameter definitions in yaml instead of json
-      PyYAML package is already installed with some of the dependencies
+- [ ] Consider storing parameter definitions in yaml instead of json (PyYAML package is already installed with some of the dependencies)
 
 ## accessors
+- [ ] Make range for etr.fit_linhall optional
 - [ ] Split 'etr' to 'ppc' (post-process?) and 'etr' (?)
 - [ ] Accept columns to interpolate in etr.interpolate 
 - [ ] Preserve axes and labels in etr.interpolate result (via proper slicing from 'ms_pandas'?)
