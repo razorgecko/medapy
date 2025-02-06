@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, Pattern, Iterable
+from typing import Dict, Pattern, Iterable, NamedTuple
 from types import MappingProxyType
 import re
 from enum import Enum
@@ -9,9 +9,29 @@ import json
 
 
 class SweepDirection(Enum):
-    UP = 'up'
-    DOWN = 'down'
-    UNDEFINED = 'undefined'
+    INCREASING = 1
+    DECREASING = -1
+    UNDEFINED = 0
+
+    __aliases_increasing = frozenset(('inc', 'up', 'increasing'))
+    __aliases_decreasing = frozenset(('dec', 'down', 'decreasing'))
+    __aliases_undefined = frozenset(('und', 'na', 'undefined'))
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            value = value.strip().lower()
+            if value in cls.__aliases_increasing:
+                return cls.INCREASING
+            elif value in cls.__aliases_decreasing:
+                return cls.DECREASING
+            elif value in cls.__aliases_undefined:
+                return cls.UNDEFINED
+    
+    def __eq__(self, other):
+        if isinstance(other, str):
+            other = self._missing_(other)
+        return super().__eq__(other)
     
 @dataclass
 class ParameterDefinition:
@@ -102,18 +122,18 @@ class ParameterDefinition:
         return self.get_pattern(pattern_type).search(text)
     
 @dataclass
-class ParameterState:
+class _ParameterState:
     """Mutable instance-specific state"""
     value: Decimal | None = None
+    is_swept: bool = False
     min_val: Decimal | None = None
     max_val: Decimal | None = None
-    is_swept: bool | None = None
     sweep_direction: SweepDirection = SweepDirection.UNDEFINED
     
 class Parameter:
     def __init__(self, definition: ParameterDefinition, **kwargs):
         self.definition = definition
-        self.state = ParameterState(**kwargs)
+        self.state = _ParameterState(**kwargs)
             
     def parse_fixed(self, text: str) -> bool:
         """Parse fixed parameter value from regex match"""
@@ -224,3 +244,36 @@ class DefinitionsLoader:
     
     def get_all(self) -> list[Parameter]:
         return [self.get_definition(name) for name in self._definitions.keys()]
+
+class ParameterState(NamedTuple):
+    value: float | None
+    is_swept: bool
+    min: float | None
+    max: float | None
+    sweep_direction: SweepDirection
+
+    @staticmethod
+    def to_float(val) -> float | None:
+        return float(val) if val is not None else None
+
+    @classmethod
+    def from_state(cls, state: _ParameterState):
+        return cls(
+            value=cls.to_float(state.value),
+            is_swept=state.is_swept,
+            min=cls.to_float(state.min_val),
+            max=cls.to_float(state.max_val),
+            sweep_direction=state.sweep_direction
+            )
+    
+    @property
+    def range(self) -> tuple[float, float] | None:
+        if self.is_swept:
+            return (self.min, self.max)
+        return None
+    
+    @property
+    def sweep(self) -> tuple[float, float, SweepDirection] | None:
+        if self.is_swept:
+            return (self.min, self.max, self.sweep_direction)
+        return None

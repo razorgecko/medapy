@@ -2,8 +2,6 @@ from typing import Iterator, Union, Tuple, Iterable
 from pathlib import Path
 
 from medapy.collection import (MeasurementFile,
-                               Polarization,
-                               SweepDirection,
                                ParameterDefinition)
                                
 
@@ -37,8 +35,8 @@ class MeasurementCollection:
             
     def filter_generator(self, 
                contacts: Union[Tuple[int, int], list[Union[Tuple[int, int], int]], int] = None,
-               polarization: Union[str, Polarization] = None,
-               sweep_direction: Union[str, SweepDirection] = None,
+               polarization: str | None = None,
+               sweep_direction: str | None = None,
                **parameter_filters) -> Iterator[MeasurementFile]:
         """
         Filter measurement files based on various criteria, returning a generator
@@ -63,8 +61,8 @@ class MeasurementCollection:
 
     def filter(self,
                contacts: Union[Tuple[int, int], list[Union[Tuple[int, int], int]], int] = None,
-               polarization: Union[str, Polarization] = None,
-               sweep_direction: Union[str, SweepDirection] = None,
+               polarization: str | None = None,
+               sweep_direction: str | None = None,
                **parameter_filters) -> 'MeasurementCollection':
         """
         Filter measurement files based on various criteria, returning a new collection

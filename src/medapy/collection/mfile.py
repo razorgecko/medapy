@@ -1,16 +1,36 @@
 from dataclasses import dataclass
 import re
-from enum import Enum
+from enum import Enum, auto
 from pathlib import Path
 from decimal import Decimal
 from typing import Iterable
 
-from .parameter import ParameterDefinition, DefinitionsLoader, Parameter, SweepDirection
+from .parameter import (ParameterDefinition,
+                        DefinitionsLoader,
+                        Parameter,
+                        ParameterState)
 
 
-class Polarization(Enum):
-    CURRENT = "I"
-    VOLTAGE = "V"
+class PolarizationType(Enum):
+    CURRENT = auto()
+    VOLTAGE = auto()
+
+    __aliases_current = frozenset(('i', 'current'))
+    __aliases_voltage = frozenset(('v', 'voltage'))
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            value = value.strip().lower()
+            if value in cls.__aliases_current:
+                return cls.CURRENT
+            elif value in cls.__aliases_voltage:
+                return cls.VOLTAGE
+    
+    def __eq__(self, other):
+        if isinstance(other, str):
+            other = self._missing_(other)
+        return super().__eq__(other)
 
 contact_pattern = re.compile(r'([IV])(\d+)(?:-(\d+))?(?:\((-?\d+\.?\d*(?:[eE][+-]?\d+)?[fpnumkMGT]?[AV])\))?')
 
@@ -19,12 +39,12 @@ class ContactPair:
     # For single contact, second_contact will be None
     first_contact: int | None = None
     second_contact: int | None = None
-    type: Polarization | None = None
+    type: PolarizationType | None = None
     magnitude: Decimal | None = None
 
     def __post_init__(self):
         if isinstance(self.type, str):
-            self.type = Polarization(self.type)
+            self.type = PolarizationType(self.type)
         if isinstance(self.magnitude, (str, int, float)):
             self.magnitude = Decimal(str(self.magnitude))
     
@@ -35,7 +55,7 @@ class ContactPair:
         type_str, first, second, magnitude = m.groups()
         self.first_contact = int(first)
         self.second_contact = int(second) if second else None
-        self.type = Polarization(type_str)
+        self.type = PolarizationType(type_str)
         self.magnitude = self._convert_magntude(magnitude) if magnitude else None
         return True
     
@@ -109,8 +129,8 @@ class MeasurementFile:
 
     def check(self,
               contacts: tuple[int, int] | list[tuple[int, int] | int] | int | None = None,
-              polarization: str | Polarization | None = None,
-              sweep_direction: str | SweepDirection | None = None,
+              polarization: str | None = None,
+              sweep_direction: str | None = None,
               **parameter_filters: dict) -> bool:
         """Check if file matches all filter conditions"""
                 
@@ -136,15 +156,11 @@ class MeasurementFile:
             
         return True
 
-    def check_polarization(self, polarization: str | Polarization):
-        pol = (polarization if isinstance(polarization, Polarization) 
-                   else Polarization(polarization))
-        return any(pair.type == pol for pair in self.contact_pairs)
+    def check_polarization(self, polarization: str):
+        return any(pair.type == polarization for pair in self.contact_pairs)
     
-    def check_sweep_direction(self, sweep_direction: str | SweepDirection):
-        direction = (sweep_direction if isinstance(sweep_direction, SweepDirection)
-                       else SweepDirection(sweep_direction.lower()))
-        return any(param.state.sweep_direction == direction 
+    def check_sweep_direction(self, sweep_direction: str):
+        return any(param.state.sweep_direction == sweep_direction 
                     for param in self.parameters.values())
             
     def check_contacts(self,
@@ -165,7 +181,7 @@ class MeasurementFile:
     def check_parameter(self,
                         name: str,
                         value) -> bool:
-        """Check if parameter matches filter value or range"""
+        """Check if parameter matches value or range"""
         param = self.parameters.get(name)
         if not param:
             return False
@@ -191,6 +207,16 @@ class MeasurementFile:
 
         # For fixed parameter, check if value is within range
         return min_val <= param.state.value <= max_val
+    
+    def get_parameter(self, name: str) -> Parameter:
+        param = self.parameters.get(name)
+        if not param:
+            raise ValueError(f'{name} parameter is not defined for file {self.path.name}')
+        return param
+    
+    def state_of(self, name: str) -> ParameterState:
+        param = self.get_parameter(name)
+        return ParameterState.from_state(param.state)
     
     def _parse_filename(self) -> None:
         # Get filename without extension

@@ -15,7 +15,6 @@
 - [ ] Methods 'to_preferred_units' and 'set_preferred_units'
 
 ## collection
-- [ ] Fix: Special values doesn't work in collection.filter (Error with Decimal)
 - [ ] Methods 'append' and 'extend' for MeasurementCollection mimicking list
 - [ ] SI prefix recognition and conversion when parsing units in Parameter
 - [ ] Reading file metadata to fill parameters
