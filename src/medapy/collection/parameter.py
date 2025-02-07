@@ -33,6 +33,9 @@ class SweepDirection(Enum):
             other = self._missing_(other)
         return super().__eq__(other)
     
+    def __hash__(self):
+        return super().__hash__()
+    
 @dataclass
 class ParameterDefinition:
     """Immutable parameter definition that can be shared"""
@@ -175,10 +178,10 @@ class Parameter:
         self.state.is_swept = True
         if start_val is not None and end_val is not None:
             if end_val > start_val:
-                self.state.sweep_direction = SweepDirection.UP
+                self.state.sweep_direction = SweepDirection.INCREASING
             elif end_val < start_val:
                 start_val, end_val = end_val, start_val
-                self.state.sweep_direction = SweepDirection.DOWN
+                self.state.sweep_direction = SweepDirection.DECREASING
             self.state.min_val = start_val
             self.state.max_val = end_val
         return self

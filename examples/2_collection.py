@@ -9,8 +9,11 @@ def print_files(fs, header=None, end=None):
     if header:
         print(header)
         print('-'*len(header))
-    for (i, f) in enumerate(fs):
-        print(f'{i:2}: {f.path.name}')
+    if isinstance(fs, MeasurementCollection):
+        print(fs)
+    else:
+        for (i, f) in enumerate(fs):
+            print(f'{i:2}: {f.path.name}')
     if end:
         print('-'*len(end))
         print(end)
@@ -54,21 +57,39 @@ testname = "sample_V1-5(1e-3A)_V3-7_V2-8_V4_V6_I11_sweepField_B-14to14T_T=3.0K_d
 testfile = MeasurementFile(testname, parameters=[field_param, temp_param])
 
 # Print states of parameters parsed from testname 
-print(list(map(str, testfile.parameters.values())), end='\n\n')
+print(*list(map(str, testfile.parameters.values())), sep='\n', end='\n\n')
 
 # Load default parameter definitions
 parameters = DefinitionsLoader().get_all()
-print(parameters, end='\n\n') # to check loaded parameter definitions
+print(*parameters, sep='\n', end='\n\n') # to check loaded parameter definitions
 
 # Set path to folder with files
 path = Path(__file__).parent.absolute() / 'files'
 
 # Initialize folder as measurement collection
 collection = MeasurementCollection(path, parameters)
-print_files(collection, header='Full collection')
+# To see the content of collection we can use print
+print(collection)
+# Similarly to pandas we can also use head and tail methods
+collection.head(6) # default 5
+collection.tail()
+print()
+
+# Collections in many ways behave like lists
+# we can add them together, append files, extend from iterables
+print(len(collection))
+collection.append(collection[0])
+print(len(collection))
+collection.pop()
+print(len(collection))
+collection.extend(collection[:2])
+print(len(collection))
+print(len(collection[:5] + collection[-5:]))
 
 # Filter sweep direction
-files_down = collection.filter(sweep_direction='down')
+# Increasing sweep options: 'inc', 'up', 'increasing'
+# Decreasing sweep options: 'dec', 'down', 'decreasing'
+files_down = collection.filter(sweep_direction='dec')
 print_files(files_down, header='Sweep -- down')
 
 # Filter temperature range from 2 to 7K
@@ -91,9 +112,9 @@ print_files(files_1uA, header='Contact pair 1-5, I=1uA')
 # Combine several filters
 files_specific = collection.filter_generator(
     contacts=[pair, (3, 7)],
-    polarization='I',  # current mode
+    polarization='current',
+    sweep_direction='up', 
     temperature=(2, 10),
-    position=[45, 'IP']
+    position=[45, 'IP'],
 )
 print_files(files_specific, header='Files filtered in a specific way')
-

@@ -15,7 +15,7 @@
 - [ ] Methods 'to_preferred_units' and 'set_preferred_units'
 
 ## collection
-- [ ] Methods 'append' and 'extend' for MeasurementCollection mimicking list
+- [x] Methods 'append' and 'extend' for MeasurementCollection mimicking list
 - [ ] SI prefix recognition and conversion when parsing units in Parameter
 - [ ] Reading file metadata to fill parameters
 - [ ] Datetime stamps for MeasurementFile (from name or system metadata)

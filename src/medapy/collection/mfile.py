@@ -31,6 +31,9 @@ class PolarizationType(Enum):
         if isinstance(other, str):
             other = self._missing_(other)
         return super().__eq__(other)
+    
+    def __hash__(self):
+        return super().__hash__()
 
 contact_pattern = re.compile(r'([IV])(\d+)(?:-(\d+))?(?:\((-?\d+\.?\d*(?:[eE][+-]?\d+)?[fpnumkMGT]?[AV])\))?')
 

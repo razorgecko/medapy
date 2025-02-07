@@ -1,29 +1,15 @@
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
-import pint_pandas
 import matplotlib.pyplot as plt
 
 from medapy import ureg
 from medapy.analysis import electron_transport
 from medapy.collection import MeasurementCollection, ContactPair, DefinitionsLoader
 
-# helper function to print files from collection
-def print_files(fs, header=None, end=None):
-    if header:
-        print(header)
-        print('-'*len(header))
-    for (i, f) in enumerate(fs):
-        print(f'{i:2}: {f.path.name}')
-    if end:
-        print('-'*len(end))
-        print(end)
-    print()
-
 # Setup path to folder with data
 script_dir = Path(__file__).parent
-data_dir = script_dir / 'test_files'
+data_dir = script_dir / 'files'
 result_dir = data_dir / 'results'
 result_dir.mkdir(exist_ok=True)
 
@@ -38,12 +24,12 @@ pair_10mA = ContactPair(1, 5, 'I', 10e-3) # create contact pair I1-5(10mA)
 
 # Filter to select a specific xx and xy files by criteria
 files_xx = collection.filter(contacts=[pair_10mA, (20, 21)])
-print_files(files_xx, 'Files Rxx')
+print('Files Rxx', files_xx, sep='\n', end='\n\n')
 # Unpack the datafile from collection to work with it direclty
 xx_datafile = files_xx.files[0]
 
 files_xy = collection.filter(contacts=[pair_10mA, (20, 40)])
-print_files(files_xy, 'Files Rxy')
+print('Files Rxy', files_xy, sep='\n', end='\n\n')
 xy_datafile = files_xy.files[0]
 
 # Alternatively we could have manually set the names
