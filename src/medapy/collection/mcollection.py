@@ -40,14 +40,8 @@ class MeasurementCollection:
     def __copy__(self):
         """Create a shallow copy of the object"""
         # Create new instance of the same class
-        new_obj = type(self)(
-            collection=self.files.copy(),
-            parameters=list(self.param_definitions.values()))
-
-        # Copy immutable objects directly
-        new_obj.file_pattern = self.file_pattern
-        new_obj.separator = self.separator
-        return new_obj
+        return self.__class__(collection=self.files.copy(),
+                              parameters=list(self.param_definitions.values()))
     
     def __add__(self, other):
         """Enable addition with another Collection or list"""
@@ -70,6 +64,12 @@ class MeasurementCollection:
                                         parameters=parameters)
         return self.files[index]
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return (self.files == other.files and
+                    self.param_definitions == other.param_definitions)
+        return super().__eq__(other)
+    
     def __setitem__(self, index, value):
         """Enable item assignment"""
         if not isinstance(value, MeasurementFile):
