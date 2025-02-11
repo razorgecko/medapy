@@ -81,39 +81,56 @@ class ElectricalTransportAccessor():
         if not inplace:
             return df
     
-    def symmetrize(self, add_col='sym', inplace=False):
+    def symmetrize(self, add_col='sym',
+                   set_axis: str | None = None,
+                   add_label : str | None = None,
+                   inplace=False):
         df = self.__if_inplace(inplace)
         y_new = misc.symmetrize(self.y)
+        unit = df.ms.get_unit(self._col_y)
+        sym_series = pd.Series(y_new, dtype=f"pint[{unit}]")
         if add_col:
-            col_sym = f"{self._col_y} {add_col}"
-            unit = df.ms.get_unit(self._col_y)
-            df[col_sym] = pd.Series(y_new, dtype=f"pint[{unit}]")
+            col_sym = f"{self._col_y}_{add_col}"
+            df[col_sym] = sym_series
+            self.__setax_addlbl(col_sym, set_axis, add_label)
         else:
-            df.ms.replace_values(self._col_y, y_new)
+            return sym_series
+            # df.ms.replace_values(self._col_y, y_new)
         if not inplace:
             return df
                 
-    def antisymmetrize(self, add_col='antisym', inplace=False):
+    def antisymmetrize(self, add_col='antisym',
+                       set_axis: str | None = None,
+                       add_label : str | None = None,
+                       inplace=False):
         df = self.__if_inplace(inplace)
         y_new = misc.antisymmetrize(self.y)
+        unit = df.ms.get_unit(self._col_y)
+        antisym_series = pd.Series(y_new, dtype=f"pint[{unit}]")
         if add_col:
-            col_sym = f"{self._col_y} {add_col}"
-            unit = df.ms.get_unit(self._col_y)
-            df[col_sym] = pd.Series(y_new, dtype=f"pint[{unit}]")
+            col_antisym = f"{self._col_y}_{add_col}"
+            df[col_antisym] = antisym_series
+            self.__setax_addlbl(col_antisym, set_axis, add_label)
         else:
-            df.ms.replace_values(self._col_y, y_new)
+            return antisym_series
+            # df.ms.replace_values(self._col_y, y_new)
         if not inplace:
             return df
     
-    def normalize(self, by=None, add_col='norm', inplace=False):
+    def normalize(self, by, add_col='norm',
+                  set_axis: str | None = None,
+                  add_label : str | None = None,
+                  inplace=False):
         #inplace=False is not implemented
         df = self.__if_inplace(inplace)
         y_new = misc.normalize(self.y, by)
+        norm_series = pd.Series(y_new, dtype="pint[]")
         if add_col:
-            col_norm = f"{self._col_y} {add_col}"
-            df[col_norm] = pd.Series(y_new, dtype="pint[]")
+            col_norm = f"{self._col_y}_{add_col}"
+            df[col_norm] = norm_series
+            self.__setax_addlbl(col_norm, set_axis, add_label)
         else:
-            df[self._col_y] = pd.Series(y_new, dtype="pint[]")
+            return norm_series        
         if not inplace:
             return df
     
