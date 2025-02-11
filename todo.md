@@ -16,10 +16,17 @@
 
 ## collection
 - [x] Methods 'append' and 'extend' for MeasurementCollection mimicking list
+- [ ] Sort files in collection
+    - [x] by parameter value
+    - [ ] by sweep direction
+- [ ] Dump/load collection to/from db
+- [ ] Move/copy files from collection to
+- [ ] Link dataframes to file objects in collection (?)
 - [ ] SI prefix recognition and conversion when parsing units in Parameter
 - [ ] Reading file metadata to fill parameters
 - [ ] Datetime stamps for MeasurementFile (from name or system metadata)
 - [ ] Consider storing parameter definitions in yaml instead of json (PyYAML package is already installed with some of the dependencies)
+- [ ] 'group_by' method to divide collection to subcollections
 
 ## accessors
 - [ ] Make range for etr.fit_linhall optional

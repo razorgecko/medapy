@@ -92,7 +92,7 @@ class MeasurementCollection:
             res += self._head_files_str(length)
         else:
             res += self._head_files_str(5)
-            res += f'\n{'..':2}    {'...':^8}\n'
+            res += f"\n{'..':2}    {'...':^8}\n"
             res += self._tail_files_str(5)
         return res
     
@@ -163,6 +163,11 @@ class MeasurementCollection:
             separator=self.separator
         )
 
+    def sort(self, *parameters) -> 'MeasurementCollection':
+        files = sorted(self.files, key=lambda f: tuple(f.state_of(p).value for p in parameters))
+        return type(self)(collection=files.copy(),
+                          parameters=list(self.param_definitions.values()))
+    
     def copy(self):
         return self.__copy__()
     
@@ -201,7 +206,7 @@ class MeasurementCollection:
             raise TypeError(f"All items in {iter_name} must be {class_obj.__name__} objects")
     
     def __get_repr_header(self):
-        return f'{'':2}    Filename\n'
+        return f"{'':2}    Filename\n"
     
     def _head_files_str(self, n: int) -> str:
         head = ''
@@ -215,3 +220,12 @@ class MeasurementCollection:
         for (i, f) in enumerate(self.files[-n:]):
             tail += f'{ref_idx + i:>2}    {f.path.name}\n'
         return tail.rstrip('\n')
+    
+# Drafts/templates
+    # def group_by(self, attribute: str) -> dict[str, list[MeasurementFile]]:
+    #     """Group files by given attribute"""
+    #     result = {}
+    #     for f in self.files:
+    #         key = str(getattr(f, attribute))
+    #         result.setdefault(key, []).append(f)
+    #     return result

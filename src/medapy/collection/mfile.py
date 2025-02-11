@@ -12,8 +12,8 @@ from .parameter import (ParameterDefinition,
 
 
 class PolarizationType(Enum):
-    CURRENT = auto()
-    VOLTAGE = auto()
+    CURRENT = 'I'
+    VOLTAGE = 'V'
 
     __aliases_current = frozenset(('i', 'current'))
     __aliases_voltage = frozenset(('v', 'voltage'))
