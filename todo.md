@@ -10,7 +10,7 @@
 - [ ] Package installation
 
 ## ms_pandas
-- [ ] Return a proper ms df when slicing existing one
+- [x] Return a proper ms df when slicing existing one
 - [ ] Optionality to write metadata (stored in _obj.attrs['meta']) in a file before the data
 - [ ] Methods 'to_preferred_units' and 'set_preferred_units'
 
