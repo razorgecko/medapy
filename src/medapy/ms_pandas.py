@@ -7,6 +7,8 @@ from typing import Optional, Union
 
 import numpy.typing as npt
 import pandas as pd
+from pandas.io.formats.format import DataFrameFormatter
+from pandas.io.formats.string import StringFormatter
 import pint
 from pint.errors import UndefinedUnitError
 
@@ -126,42 +128,39 @@ class MeasurementSheetAccessor:
         # For non-_axes attributes, use default behavior
         super().__setattr__(name, value)
     
-    def __str__(self) -> str:
-        """Return string representation of the accessor's state."""
-        # lines = []
-        column_widths = [len(col) for col in self._obj.columns]
+    def __str__(self):
+        # Get repr parameters used by pandas
+        repr_params = pd.io.formats.format.get_dataframe_repr_params()
+        line_width = repr_params.pop('line_width')
+        repr_params.pop('max_colwidth') # remove key unexpected by DataFrameFormatter
+
+        #
+        formatter = DataFrameFormatter(frame=self._obj, **repr_params)
+        string_formatter = StringFormatter(formatter, line_width=line_width)
         
-        pd_strings = self._obj.__str__().split('\n')
-        title = pd_strings[0]
-        n_lead_spaces = len(title) - len(title.lstrip(' '))
-        units_string = ' '.join(self._units.values())
-        axes_string = ' '.join(self._axes)
-        labels_string = ' '.join(self._labels)
-        lines = [title] + [units_string] + [axes_string] + [labels_string] + pd_strings[1:]
-        return '\n'.join(lines)
-        # # Add header section
-        # lines.append("Columns:")
-        # for i, col in enumerate(self._obj.columns):
-        #     unit = self.get_unit(col)
-        #     lines.append(f"  {i}: {col} [{unit}]")
-
-        # # Add labels section if any labels exist
-        # if self._labels:
-        #     lines.append("\nLabels:")
-        #     for label, column in self._labels.items():
-        #         lines.append(f"  {label} -> {column}")
-        # else:
-        #     lines.append("\nLabels: none")
-
-        # # Add axes section if any axes are assigned
-        # if self._axes:
-        #     lines.append("\nAxes:")
-        #     for axis, column in self._axes.items():
-        #         lines.append(f"  {axis} -> {column}")
-        # else:
-        #     lines.append("\nAxes: none")
-
-        # return "\n".join(lines)
+        # Get original formatted output
+        original = string_formatter._get_strcols()
+        # Get columns from output and their column number
+        columns = [(i, col[0].strip()) for i, col in enumerate(original)]
+        
+        # Modify data columns
+        for i, column in columns[1:]:
+            unit =  self._wrap_unit_in_brackets(self.get_unit(column))
+            axis = self.is_axis(column) or '-'
+            labels = self.get_labels(column) or '-'
+             
+            col_width = len(original[i][0])
+            unit_fmt = f"{unit:>{col_width}}"
+            axis_fmt = f"{axis:>{col_width}}"
+            labels_fmt = f"{' ,'.join(labels):>{col_width}}"
+            original[i][1:1] = [unit_fmt, axis_fmt, labels_fmt]
+        
+        # Modify index column
+        idx_width = len(original[0][-1])
+        original[0][1:1] = [f"{name:<{idx_width}}" for name in ('U', 'A', 'L')]
+            
+        
+        return string_formatter._join_multiline(original)
     
     @property
     def _units(self) -> dict[str, str]:
@@ -368,7 +367,7 @@ class MeasurementSheetAccessor:
         elif isinstance(formatter, dict):
             formatter = {self.get_column(col): fmt for col, fmt in formatter.items()}
         # if header is True:
-        #     header = [self._append_unit(col, brackets, unit_format) for col in columns]
+        #     header = [self._append_unit_to_column(col, brackets, unit_format) for col in columns]
         
         try:
             if formatter is not None:
@@ -688,7 +687,7 @@ class MeasurementSheetAccessor:
         format_spec : str, optional
             Format to use when convert unit to string. If None, uses default format
         """
-        new_col = self._append_unit(column, brackets, format_spec)
+        new_col = self._append_unit_to_column(column, brackets, format_spec)
         self.rename(columns={column: new_col})
         return new_col
     
@@ -771,6 +770,11 @@ class MeasurementSheetAccessor:
         if label not in self._labels:
             raise KeyError(f"Label '{label}' not found")
         self._labels.pop(label, None)
+    
+    def get_labels(self, column: str) -> tuple[str]:
+        """Get all labels assigned to column"""
+        return tuple(lbl for lbl, col in self._labels.items() if col == column)
+
     
     def clear_labels(self) -> None:
         """Clear all label mappings."""
@@ -995,7 +999,7 @@ class MeasurementSheetAccessor:
                 raise ValueError(f"Invalid regular expression pattern: {e}")
         raise TypeError(f"Pattern must be string or compiled regex, got {type(pattern)}")
             
-    def _append_unit(self, column: str,
+    def _append_unit_to_column(self, column: str,
                     brackets: Optional[str] = None,
                     format_spec: Optional[str] = None) -> str:
         """
@@ -1010,6 +1014,11 @@ class MeasurementSheetAccessor:
         format_spec : str, optional
             Format to use when convert unit to string. If None, uses default format
         """
+        unit = self.get_unit(column)
+        wrapped_unit = self._wrap_unit_in_brackets(unit, brackets, format_spec)
+        return f'{column} {wrapped_unit}'
+
+    def _wrap_unit_in_brackets(self, unit, brackets=None, format_spec=None) -> str:
         if brackets is not None:
             self._validate_brackets(brackets)
             left, right = brackets
@@ -1021,9 +1030,10 @@ class MeasurementSheetAccessor:
             use_format = format_spec
         else:
             use_format = ureg.formatter.default_format
-        formatted_unit = format(self.get_unit(column), use_format)
-        return f'{column} {left}{formatted_unit}{right}'
-
+        unit = self._validate_unit(unit)
+        formatted_unit = format(unit, use_format)
+        return f'{left}{formatted_unit}{right}'
+    
     def _update_column_maps(self, columns: dict[str, str]) -> None:
         """Remap axes, labels, and units when columns change names"""
         # Use dict copies (self.units, self.labels, self.axes) 
