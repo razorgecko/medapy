@@ -1094,8 +1094,9 @@ class MeasurementSheetAccessor:
         all_translations = self._translations.copy()
         if translations:
             all_translations.update(translations)
-
-        return all_translations.get(unit, unit)
+        for u_incorrect, u_correct in all_translations.items():
+            unit = unit.replace(u_incorrect, u_correct)
+        return unit
     
     def _compile_pattern(self, pattern: Union[str, Pattern]) -> Pattern:
         """
