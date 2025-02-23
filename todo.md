@@ -7,7 +7,7 @@
 - [ ] Usage examples
 - [ ] Optimize imports
 - [ ] Consistent typing (pipe style)
-- [ ] Package installation
+- [x] Package installation
 
 ## ms_pandas
 - [x] Return a proper ms df when slicing existing one
@@ -23,7 +23,7 @@
 - [ ] Move/copy files from collection to
 - [ ] Link dataframes to file objects in collection (?)
 - [ ] SI prefix recognition and conversion when parsing units in Parameter
-- [ ] Reading file metadata to fill parameters
+- [ ] Reading file metadata to fill parameters as alternative to parsing filename
 - [ ] Datetime stamps for MeasurementFile (from name or system metadata)
 - [ ] Consider storing parameter definitions in yaml instead of json (PyYAML package is already installed with some of the dependencies)
 - [ ] 'group_by' method to divide collection to subcollections

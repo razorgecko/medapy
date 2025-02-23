@@ -16,7 +16,7 @@ where OPTION can be one of:
 - `all` - includes all optional dependencies
 
 ### Requirements
-Basic installation: `numpy, pandas, pint, pandas`
+Basic installation: `numpy, pandas, pint, pint-pandas`
 
 \[fit\]: `scipy, lmfit`
 

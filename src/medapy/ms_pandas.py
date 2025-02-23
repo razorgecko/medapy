@@ -1,11 +1,11 @@
 import sys
 from pathlib import Path
+from collections import Counter
 import re
 from re import Pattern
 import warnings
 from typing import Optional, Union
 
-import numpy.typing as npt
 import pandas as pd
 from pandas.io.formats.format import DataFrameFormatter
 from pandas.io.formats.string import StringFormatter
@@ -22,6 +22,9 @@ def update_column_names(func):
     def wrapper(self, *args, **kwargs):
         # Execute original rename operation
         columns = kwargs['columns']
+        invalid_columns = self._get_nonuniques_with_counts(columns.values(), self.labels)
+        if invalid_columns:
+            raise ValueError(f"New column names conflict with labels: {', '.join(invalid_columns)}")
         res = func(self)(self._obj, *args, **kwargs)
 
         # Determine which DataFrame to update based on inplace parameter
@@ -67,13 +70,20 @@ class MeasurementSheetAccessor:
             columns = [self._labels.get(k, k) for k in key]
             self._validate_columns_in_df(columns)
             other_obj = self._obj[columns]
+            other_obj.ms.reset_axes()
             other_obj.ms._clear_unused()
             return other_obj
         
         # Single key
         column = self._labels.get(key, key)
         self._validate_columns_in_df(column)
-        return self._obj[column]  
+        unit = self.get_unit(column)
+        if unit != self.DIMENSIONLESS_UNIT:
+            wrapped_unit = self._wrap_unit_in_brackets(unit)
+            new_name = f'{column} {wrapped_unit}'
+        else:
+            new_name = column
+        return pd.Series(self._obj[column].to_numpy(), name=new_name)
     
     def __setitem__(self, key: str, value) -> None:
         """Set column(s) by label(s) or column name(s) using square bracket notation."""
@@ -129,38 +139,63 @@ class MeasurementSheetAccessor:
         super().__setattr__(name, value)
     
     def __str__(self):
-        # Get repr parameters used by pandas
-        repr_params = pd.io.formats.format.get_dataframe_repr_params()
-        line_width = repr_params.pop('line_width')
-        repr_params.pop('max_colwidth') # remove key unexpected by DataFrameFormatter
-
-        #
-        formatter = DataFrameFormatter(frame=self._obj, **repr_params)
-        string_formatter = StringFormatter(formatter, line_width=line_width)
-        
-        # Get original formatted output
-        original = string_formatter._get_strcols()
-        # Get columns from output and their column number
-        columns = [(i, col[0].strip()) for i, col in enumerate(original)]
-        
-        # Modify data columns
-        for i, column in columns[1:]:
-            unit =  self._wrap_unit_in_brackets(self.get_unit(column))
+        index = ['U', 'A', 'L']
+        data = dict()
+        for column in self._obj.columns.tolist():
+            unit = self.get_unit(column) or ''
             axis = self.is_axis(column) or '-'
             labels = self.get_labels(column) or '-'
-             
-            col_width = len(original[i][0])
-            unit_fmt = f"{unit:>{col_width}}"
-            axis_fmt = f"{axis:>{col_width}}"
-            labels_fmt = f"{' ,'.join(labels):>{col_width}}"
-            original[i][1:1] = [unit_fmt, axis_fmt, labels_fmt]
-        
-        # Modify index column
-        idx_width = len(original[0][-1])
-        original[0][1:1] = [f"{name:<{idx_width}}" for name in ('U', 'A', 'L')]
             
+            unit =  self._wrap_unit_in_brackets(unit)
+            labels= ', '.join(labels)
+            
+            data[column] = [unit, axis, labels]
+            
+        df_ms = pd.DataFrame(data, index=index)
+        df_display = pd.concat(objs=[df_ms, self._obj])
+        return df_display.__repr__()  
+      
+    def __repr__(self):
+        # Get repr parameters used by pandas
+        repr_params = pd.io.formats.format.get_dataframe_repr_params()
+        # remove keys unexpected by DataFrameFormatter
+        line_width = repr_params.pop('line_width')
+        max_colwidth = repr_params.pop('max_colwidth') 
+
+        from pandas import option_context
         
-        return string_formatter._join_multiline(original)
+        with option_context("display.max_colwidth", max_colwidth):
+            formatter = DataFrameFormatter(frame=self._obj, **repr_params)
+            string_formatter = StringFormatter(formatter, line_width=line_width)
+            
+            # Get original formatted output
+            original = string_formatter._get_strcols()
+            # Get columns from output and their column number
+            columns = [(i, col[0].strip()) for i, col in enumerate(original)]
+            
+            # Modify data columns
+            for i, column in columns[1:]:
+                if column == '...':
+                    unit = '...'
+                    axis = '...'
+                    labels = ['...']
+                else:
+                    unit =  self._wrap_unit_in_brackets(self.get_unit(column))
+                    axis = self.is_axis(column) or '-'
+                    labels = self.get_labels(column) or '-'
+                    
+                col_width = len(original[i][0])
+                unit_fmt = f"{unit:>{col_width}}"
+                axis_fmt = f"{axis:>{col_width}}"
+                labels_fmt = f"{' ,'.join(labels):>{col_width}}"
+                original[i][1:1] = [unit_fmt, axis_fmt, labels_fmt]
+            
+            # Modify index column
+            idx_width = len(original[0][-1])
+            original[0][1:1] = [f"{name:<{idx_width}}" for name in ('U', 'A', 'L')]
+                
+            # return string_formatter._join_multiline(original)
+            return string_formatter.adj.adjoin(1, *original)
     
     @property
     def _units(self) -> dict[str, str]:
@@ -457,6 +492,14 @@ class MeasurementSheetAccessor:
         for (col, unit) in zip(columns, to_units):
             self.convert_unit(col, unit)
     
+    def get_ms_state(self) -> dict:
+        """Get MSheet state as dict"""
+        return self._get_ms_state_of_df(self._obj)
+    
+    def set_ms_state(self, attrs) -> None:
+        """Set MSheet state from dict"""
+        self._obj.attrs.update(attrs)
+    
     # Unit methods
     def infer_unit(self, column: str,
                    pattern: str | Pattern = None,
@@ -555,8 +598,7 @@ class MeasurementSheetAccessor:
         column = self.get_column(column)
 
         unit = self._units.get(column)
-        if unit:
-            return unit
+        return unit
     
     def set_unit(self, column: str, unit: Union[str, pint.Unit, None] = None) -> None:
         """
@@ -734,6 +776,25 @@ class MeasurementSheetAccessor:
         self._obj.rename(columns=columns, inplace=True)
         self._update_column_maps(columns)
     
+    def add_labels(self, labels: dict[str, str]) -> None:
+        invalid_cols = set(labels.keys()) - set(self._obj.columns)
+        if invalid_cols:
+            raise ValueError(f"Invalid column names: {', '.join(invalid_cols)}")
+        
+        labels_dict = dict()
+        for column, label in labels.items():
+            if not isinstance(label, str):
+                for lbl in label:
+                    labels_dict[lbl] = column
+            else:
+                labels_dict[label] = column
+            
+        invalid_labels = self._get_nonuniques_with_counts(self._obj.columns, labels_dict)
+        if invalid_labels:
+            raise ValueError(f"Labels conflict with existing columns: {', '.join(invalid_labels)}")
+        
+        self._labels.update(labels_dict)
+      
     def add_label(self, column: str, label: str) -> None:
         """Add a label for a column."""
         if label in self._obj.columns:
@@ -880,6 +941,59 @@ class MeasurementSheetAccessor:
         self._axes.clear()
         self.reset_axes()
 
+    # DataFrame operations
+    def concat(self,
+               objs: pd.DataFrame | list[pd.DataFrame],
+               *,
+               drop_x: bool = True
+               ) -> pd.DataFrame:
+        if isinstance(objs, pd.DataFrame):
+            objs = [objs]
+
+        all_columns = [self._obj.columns.tolist()]
+        all_labels = [list(self.labels.keys())]
+        all_units = [self.units]
+        for obj in objs:
+            columns = obj.columns.tolist()
+            x_axis = obj.attrs.get('_ms_axes', {}).get('x')
+            if drop_x and not x_axis:
+                columns = [col for col in columns if col != x_axis]
+            all_columns.append(columns)
+            
+            labels = obj.attrs.get('_ms_labels', {})
+            all_labels.append(labels)
+            
+            units = obj.attrs.get('_ms_units', {})
+            if not units:
+                units = {col: self.DIMENSIONLESS_UNIT for col in columns}
+            all_units.append(units)
+
+        columns_overlap = self._get_nonuniques_with_counts(*all_columns)
+        if columns_overlap:
+            raise ValueError("Column names of concatenating objects have duplicates "
+                             f"(name: times): {str(columns_overlap)[1:-1]}")
+        
+        labels_overlap = self._get_nonuniques_with_counts(
+            map(lambda x: x.keys(), *all_labels))
+        if labels_overlap:
+            raise ValueError("Labels of concatenating objects have duplicates "
+                             f"(name: times): {str(labels_overlap)[1:-1]}")
+        
+        df = pd.concat(objs=[self._obj, *objs], axis='columns')
+        ms_state = self.get_ms_state()
+        self._set_ms_state_to_df(df, ms_state)
+        merged_labels = dict()
+        for d in all_labels:
+            merged_labels.update(d)
+        df.attrs['_ms_labels'] = merged_labels.copy()
+        
+        merged_units = dict()
+        for d in all_units:
+            merged_units.update(d)
+        df.attrs['_ms_units'] = merged_units
+        
+        return df
+    
     # Unit customization methods
     def set_unit_translations(self, translations: Optional[dict[str, str]] = None) -> None:
         """
@@ -954,6 +1068,20 @@ class MeasurementSheetAccessor:
             self._unit_pattern = self.DEFAULT_UNIT_PATTERN
     
     # Protected methods
+    def _get_nonuniques_with_counts(self, *sequences):
+        items = [item for seq in sequences for item in seq]
+        counts = Counter(items)
+        duplicates = {item: count for item, count in counts.items() if count > 1}
+        return duplicates
+        
+    def _make_empty_replica_len(self, **kwargs) -> pd.DataFrame:
+        empty_df = pd.DataFrame(**kwargs)
+        attrs = self.get_ms_state()
+        for attr in ('_ms_labels', '_ms_axes', '_ms_units'):
+            attrs.pop(attr)
+        self._set_ms_state_to_df(empty_df, attrs)
+        return empty_df
+    
     def _translate_unit(self,
                         unit: Optional[str],
                         translations: Optional[dict[str, str]] = None) -> Optional[str]:
@@ -1056,7 +1184,7 @@ class MeasurementSheetAccessor:
                     self._obj.attrs['_ms_units'][new_name] = self._obj.attrs['_ms_units'].pop(old_name)
     
     def _clear_unused(self) -> None:
-        """Clear axes and labels for columns that are not in df"""
+        """Clear axes, labels and units for columns that are not in df"""
         for axis, column in self.axes.items():
             if column not in self._obj.columns:
                 self.remove_axis(axis)
@@ -1068,6 +1196,22 @@ class MeasurementSheetAccessor:
         for column, unit in self.units.items():
             if column not in self._obj.columns:
                 self._units.pop(column)
+    
+    @staticmethod
+    def _get_ms_state_of_df(df: pd.DataFrame) -> dict:
+        attrs = dict()
+        df_attrs = df.attrs.copy()
+        for key, value in df_attrs.items():
+            if isinstance(key, str) and key.startswith('_ms_'):
+                attrs[key] = value
+        return attrs
+    
+    @staticmethod
+    def _set_ms_state_to_df(df: pd.DataFrame, attrs: dict) -> None:
+        for key in attrs:
+            if not (isinstance(key, str) and key.startswith('_ms_')):
+                raise ValueError(f"Unsupported key {key}")
+        df.attrs.update(attrs)
     
     @staticmethod
     def _format_df_inplace(df: pd.DataFrame, formatter: dict[str, str]) -> None:
