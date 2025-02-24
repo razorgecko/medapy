@@ -29,7 +29,6 @@
 - [ ] 'group_by' method to divide collection to subcollections
 
 ## accessors
-- [ ] Make range for etr.fit_linhall optional
 - [ ] Split 'etr' to 'ppc' (post-process?) and 'etr' (?)
 - [ ] Accept columns to interpolate in etr.interpolate 
 - [ ] Preserve axes and labels in etr.interpolate result (via proper slicing from 'ms_pandas'?)

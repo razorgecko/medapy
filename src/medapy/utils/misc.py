@@ -704,7 +704,10 @@ def make_curve(
     X = np.column_stack([x**d for d in degrees])
     return X @ coefs
 
-def check_monotonic_arr(arr: np.ndarray, col: int | None, interrupt: bool = False) -> int:
+def check_monotonic_arr(arr: np.ndarray,
+                        col: int | None = None,
+                        interrupt: bool = False
+                        ) -> int:
     """Check if an array column is monotonic.
 
     Parameters

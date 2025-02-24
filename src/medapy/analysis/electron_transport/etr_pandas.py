@@ -1,152 +1,19 @@
-from pathlib import Path
-from typing import Callable, Optional, TextIO, Union
+from typing import Callable
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from pint_pandas import PintType
+import pint
 
 import medapy.utils.misc as misc
+from medapy.analysis.proc_pandas import DataProcessingAccessor
 from . import electron_transport as etr
 
 
-ureg = PintType.ureg
+ureg = pint.get_application_registry()
 
 @pd.api.extensions.register_dataframe_accessor("etr")
-class ElectricalTransportAccessor():
-    
-    def __init__(self, pandas_obj):
-        self._validate(pandas_obj)
-        self._obj = pandas_obj
-    
-    @staticmethod
-    def _validate(obj):
-        if '_ms_axes' not in obj.attrs:
-            raise AttributeError("MeasurementSheet must be initialized")
-        if len(obj.columns) < 2:
-            raise ValueError("Data should have at least two columns")
-    
-    @property
-    def x(self) -> pd.Series:
-        return self._obj.ms.x
-    
-    @property
-    def y(self) -> pd.Series:
-        return self._obj.ms.y
-    
-    @property
-    def z(self) -> pd.Series:
-        return self._obj.ms.y
-    
-    @property
-    def _col_x(self) -> pd.Series:
-        return self._obj.ms.axes['x']
-    
-    @property
-    def _col_y(self) -> pd.Series:
-        return self._obj.ms.axes['y']
-    
-    @property
-    def _col_z(self) -> pd.Series:
-        return self._obj.ms.axes['z']
-    
-    def check_monotonic(self, interrupt=False):
-        # check = misc.check_monotonic_df(self._obj, self._col_x, interrupt=False)
-        check = misc.check_monotonic_arr(self.x, col=0, interrupt=False)
-        if interrupt and check == 0:
-            raise ValueError(f'Column `{self._col_x}` is not monotonic')
-        return check
-            
-    def ensure_increasing(self, inplace=False):
-        # check = misc.check_monotonic_df(self._obj, self._col_x, interrupt=False)
-        df = self.__if_inplace(inplace)
-        check = misc.check_monotonic_arr(self.x, col=0, interrupt=False)
-        if check == 0:
-            raise ValueError(f'Column `{self._col_x}` is not monotonic')
-        elif check == -1:
-            # Invert the order in-place
-            df.index = range(len(df) -1, -1, -1)
-            df.sort_index(inplace=True)
-            df.reset_index(drop=True, inplace=True)
-        if not inplace:
-            return df
-    
-    def select_range(self, val_range: npt.ArrayLike,
-        inside_range: bool = True, inclusive: str = 'both', handle_na: str = 'raise',
-        inplace: bool = False
-        ) -> None:
-        df = self.__if_inplace(inplace)
-        result = misc.select_range_df(df, self._col_x, val_range, inside_range, inclusive, handle_na)
-        df.drop(index=df.index.difference(result.index), inplace=True)
-        if not inplace:
-            return df
-    
-    def symmetrize(self, add_col='sym',
-                   set_axis: str | None = None,
-                   add_label : str | None = None,
-                   inplace=False):
-        df = self.__if_inplace(inplace)
-        y_new = misc.symmetrize(self.y)
-        unit = df.ms.get_unit(self._col_y)
-        sym_series = pd.Series(y_new, dtype=f"pint[{unit}]")
-        if add_col:
-            col_sym = f"{self._col_y}_{add_col}"
-            df[col_sym] = sym_series
-            self.__setax_addlbl(col_sym, set_axis, add_label)
-        else:
-            return sym_series
-            # df.ms.replace_values(self._col_y, y_new)
-        if not inplace:
-            return df
-                
-    def antisymmetrize(self, add_col='antisym',
-                       set_axis: str | None = None,
-                       add_label : str | None = None,
-                       inplace=False):
-        df = self.__if_inplace(inplace)
-        y_new = misc.antisymmetrize(self.y)
-        unit = df.ms.get_unit(self._col_y)
-        antisym_series = pd.Series(y_new, dtype=f"pint[{unit}]")
-        if add_col:
-            col_antisym = f"{self._col_y}_{add_col}"
-            df[col_antisym] = antisym_series
-            self.__setax_addlbl(col_antisym, set_axis, add_label)
-        else:
-            return antisym_series
-            # df.ms.replace_values(self._col_y, y_new)
-        if not inplace:
-            return df
-    
-    def normalize(self, by, add_col='norm',
-                  set_axis: str | None = None,
-                  add_label : str | None = None,
-                  inplace=False):
-        #inplace=False is not implemented
-        df = self.__if_inplace(inplace)
-        y_new = misc.normalize(self.y, by)
-        norm_series = pd.Series(y_new, dtype="pint[]")
-        if add_col:
-            col_norm = f"{self._col_y}_{add_col}"
-            df[col_norm] = norm_series
-            self.__setax_addlbl(col_norm, set_axis, add_label)
-        else:
-            return norm_series        
-        if not inplace:
-            return df
-    
-    def interpolate(self,
-        x_new: npt.ArrayLike,
-        *,
-        interp_method: Callable[[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike], npt.ArrayLike] | None = None,
-        smooth_method: Callable[[npt.ArrayLike], npt.ArrayLike] | None = None,
-        handle_na: str = 'raise'
-        ) -> pd.DataFrame:
-
-        y_new = misc.interpolate(self.x, self.y, x_new,
-                                 interp_method=interp_method, smooth_method=smooth_method, handle_na=handle_na)
-        
-        return self._form_new_xy_df(x_new, y_new)
-    
+class ElectricalTransportAccessor(DataProcessingAccessor):
     def r2rho(self, kind: str,
               t: float, width: float = None, length: float = None,
               add_col: str = 'rho',
@@ -169,7 +36,7 @@ class ElectricalTransportAccessor():
         else: # only one of them has units
             raise AttributeError("Only one of width and length have different units")
         # Should we convert r to 'ohm' before calculating 'rho'?
-        r_unit = df.ms.get_unit(self._col_y)
+        r_unit = df.ms.get_unit(self.col_y)
         
         rho = etr.r2rho(self.y, kind=kind, t=t, width=width, length=length)
         rho_unit = r_unit * t_unit
@@ -183,31 +50,50 @@ class ElectricalTransportAccessor():
         if not inplace:
             return df
         
+    def fit_linhall(self,
+                    cols: str | list[str] = [],
+                    x_range: npt.ArrayLike | None = None,
+                    *,
+                    add_col: str = 'linHall',
+                    set_axes: str | list[str] | None = None,
+                    add_labels: str | list[str] | None = None,
+                    inplace: bool = False
+                    ) -> np.ndarray | list[np.ndarray]:
+        df = self.__if_inplace(inplace)
+        cols, set_axes, add_labels = self._prepare_cols_axes_labels(cols, set_axes, add_labels)
+        coefs = []
+        for i, col in enumerate(cols):
+            c = misc.quick_fit(self.x, self.ms[col], x_range=x_range)
+            coefs.append(c)
+            if add_col:
+                col_fit = f"{col}_{add_col}"
+                unit = df.ms.get_unit(col)
+                df[col_fit] = misc.make_curve(self.x, c)
+                df.ms.set_unit(col_fit, unit)
+                self.__setax_addlbl(col_fit, set_axes[i], add_labels[i])
+        if len(cols) == 1:
+            coefs = coefs[0]
+        if inplace:
+            return None, coefs
+        else:
+            return df, coefs
     
-    def fit_linhall(self, x_range, add_col='linHall', a0_col=None, set_axis=None, add_label=None):
-        df = self._obj
-        coefs = misc.quick_fit(self.x, self.y, x_range=x_range)
-        if add_col:
-            if a0_col is not None:
-                use_coefs = np.array([a0_col, coefs[1]]) 
-            else:
-                use_coefs = coefs
-            col_fit = f"{self._col_y}_{add_col}"
-            unit = df.ms.get_unit(self._col_y)
-            series = misc.make_curve(self.x, use_coefs)
-            df[col_fit] = pd.Series(series, dtype=f"pint[{unit}]")
-            self.__setax_addlbl(col_fit, set_axis, add_label)
-        return coefs
-    
-    def fit_twoband(self, p0: tuple[float, float, float, float], 
-                    *, kind: str, bands: str,
+    def fit_twoband(self,
+                    p0: tuple[float, float, float, float],
+                    cols: str | list[str] = [],
+                    *,
+                    kind: str,
+                    bands: str,
                     field_range: npt.ArrayLike | None = None,
                     inside_range: bool = True,
                     extension: tuple | npt.ArrayLike | pd.DataFrame | None = None,
                     add_col: str | None = '2bnd',
                     set_axis: str | None = None, add_label : str | None = None,
+                    inplace: bool = False,
                     **kwargs) -> tuple[float, float, float, float]:
-        df = self._obj
+        df = self.__if_inplace(inplace)
+        cols, set_axes, add_labels = self._prepare_cols_axes_labels(cols, set_axes, add_labels)
+        coefs = []
         if isinstance(extension, pd.DataFrame):
             if '_ms_axes' in extension.attrs:
                 extension = (extension.ms.x, extension.ms.y)
@@ -227,10 +113,16 @@ class ElectricalTransportAccessor():
                 func_2bnd = etr.gen_mr2bnd_eq(bands)
             else:
                 func_2bnd = etr.gen_hall2bnd_eq(bands)
-            col_fit = f"{self._col_y}_{add_col}_{bands}"
+            col_fit = f"{self.col_y}_{add_col}_{bands}"
             df[col_fit] = pd.Series(func_2bnd(self.x, *coefs), dtype='pint[ohm*m]')
             self.__setax_addlbl(col_fit, set_axis, add_label)
-        return coefs
+        
+        if len(cols) == 1:
+            coefs = coefs[0]
+        if inplace:
+            return None, coefs
+        else:
+            return df, coefs
     
     def __if_inplace(self, inplace: bool) -> pd.DataFrame:
         if inplace:
@@ -245,12 +137,15 @@ class ElectricalTransportAccessor():
             df.ms.add_label(label, column)
     
     def _form_new_xy_df(self, x_new, y_new):
-        df_new = pd.DataFrame({self._col_x: x_new, self._col_y: y_new})
-        df_new.ms.init_msheet(units=False)
-        unit_x = self._obj.ms.get_unit(self._col_x)
-        unit_y = self._obj.ms.get_unit(self._col_y)
-        df_new.ms.set_unit(self._col_x, unit_x)
-        df_new.ms.set_unit(self._col_y, unit_y)
+        # df_new = pd.DataFrame({self.col_x: x_new, self.col_y: y_new})
+        n = x_new.shape[0]
+        df_new = self.ms[[self.col_x, self.col_y]]
+        df_new = self._obj.reindex(np.arange(n))
+        # df_new.ms.init_msheet(units=False)
+        # unit_x = self._obj.ms.get_unit(self.col_x)
+        # unit_y = self._obj.ms.get_unit(self.col_y)
+        # df_new.ms.set_unit(self.col_x, unit_x)
+        # df_new.ms.set_unit(self.col_y, unit_y)
         return df_new
     
     # @staticmethod
