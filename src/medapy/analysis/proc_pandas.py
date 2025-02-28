@@ -1,4 +1,5 @@
-from typing import Callable
+from copy import deepcopy
+from typing import Callable, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -57,8 +58,9 @@ class DataProcessingAccessor():
         return check
             
     def ensure_increasing(self, inplace=False):
-        # check = misc.check_monotonic_df(self._obj, self.col_x, interrupt=False)
-        df = self.__if_inplace(inplace)
+        # Work on a copy of the data
+        df = self._get_df_copy()
+        
         check = misc.check_monotonic_df(df, self.col_x, interrupt=False)
         if check == 0:
             raise ValueError(f'Column `{self.col_x}` is not monotonic')
@@ -67,8 +69,8 @@ class DataProcessingAccessor():
             df.index = range(len(df) -1, -1, -1)
             df.sort_index(inplace=True)
             df.reset_index(drop=True, inplace=True)
-        if not inplace:
-            return df
+            
+        return self._if_inplace(df, inplace)
     
     def select_range(self,
                      val_range: npt.ArrayLike,
@@ -77,201 +79,322 @@ class DataProcessingAccessor():
                      handle_na: str = 'raise',
                      inplace: bool = False
                      ) -> pd.DataFrame | None:
-        df = self.__if_inplace(inplace)
+        # Work on a copy of the data
+        df = self._get_df_copy()
+        # Get DataFrame with selected range
         result = misc.select_range_df(df, self.col_x, val_range, inside_range, inclusive, handle_na)
-        df.drop(index=df.index.difference(result.index), inplace=True)
-        df.reset_index(drop=True, inplace=True)
-        if not inplace:
-            return df
+        # Alternative approach
+        # df.drop(index=df.index.difference(result.index), inplace=True)
+        result.reset_index(drop=True, inplace=True)
+        
+        return self._if_inplace(result, inplace)
     
     def symmetrize(self,
-                   cols: list[str] = [],
-                   *,
-                   add_col: str = '',
-                   set_axes: str | list[str] | None = None,
-                   add_labels : str | list[str] | None = None,
-                   inplace: bool = False
-                   ) -> pd.DataFrame | None:
-        df = self.__if_inplace(inplace)
-        func = misc.symmetrize
-        if inplace:
-            return self._apply_func_to_cols(df, func, cols=cols, add_col=add_col,
-                                            set_axes=set_axes, add_labels=add_labels)
+                cols: list[str] | str | None = None,
+                *,
+                append: str = '',
+                set_axes: str | list[str] | None = None,
+                add_labels: str | list[str] | None = None,
+                inplace: bool = False
+                ) -> pd.DataFrame | None:
+        """
+        Symmetrize values in specified columns and optionally create new columns.
+
+        Parameters
+        ----------
+        cols : list[str] | str | None
+            Column(s) to symmetrize. If None, y axis column is used.
+        append : str
+            String to append to column names for new columns. If empty, overwrites original columns.
+        set_axes : str | list[str] | None
+            Axis or axes to set for the new columns.
+        add_labels : str | list[str] | None
+            Label(s) to add to the new columns.
+        inplace : bool
+            If True, modify the DataFrame in place and return None.
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Modified DataFrame or None if inplace=True.
+        """
+        # Default to y axis column if None provided
+        cols = self._prepare_values_list(cols, default=self.col_y)
+        n_cols = len(cols)
+
+        # Prepare other parameters
+        # keep existing units
+        units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
+        set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
+        add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
+        appendices = self._prepare_values_list(append, default='', n=n_cols)
+
+        # Generate new column names
+        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+
+        # Work on a copy of the data
+        df = self._get_df_copy() 
+        
+        # Calculate symmetrized values
+        new_values = misc.apply(misc.symmetrize, seq=[df.ms[col] for col in cols])
+
+        # Assign values and metadata
+        misc.apply(df.ms._set_column,
+                column=new_cols,
+                values=new_values,
+                unit=units,
+                axis=set_axes,
+                label=add_labels)
+
+        return self._if_inplace(df, inplace)
     
     def antisymmetrize(self,
-                   cols: list[str] = [],
-                   *,
-                   add_col: str = '',
-                   set_axes: str | list[str] | None = None,
-                   add_labels : str | list[str] | None = None,
-                   inplace: bool = False
-                   ) -> pd.DataFrame | None:
-        df = self.__if_inplace(inplace)
-        func = misc.antisymmetrize
-        if inplace:
-            return self._apply_func_to_cols(df, func, cols=cols, add_col=add_col,
-                                            set_axes=set_axes, add_labels=add_labels)
+                cols: list[str] | str | None = None,
+                *,
+                append: str = '',
+                set_axes: str | list[str] | None = None,
+                add_labels: str | list[str] | None = None,
+                inplace: bool = False
+                ) -> pd.DataFrame | None:
+        """
+        Antisymmetrize values in specified columns and optionally create new columns.
 
-    def normalize(self,
-                  by: str | np.number,
-                  cols: list[str] = [],
-                  *,
-                  add_col: str = '',
-                  set_axes: str | list[str] | None = None,
-                  add_labels : str | list[str] | None = None,
-                  inplace: bool = False
-                  ) -> pd.DataFrame | None:
-        df = self.__if_inplace(inplace)
-        def norm(seq):
-            return misc.normalize(seq, by=by)
-        func = norm
+        Parameters
+        ----------
+        cols : list[str] | str | None
+            Column(s) to antisymmetrize. If None, y axis column is used.
+        append : str
+            String to append to column names for new columns. If empty, overwrites original columns.
+        set_axes : str | list[str] | None
+            Axis or axes to set for the new columns.
+        add_labels : str | list[str] | None
+            Label(s) to add to the new columns.
+        inplace : bool
+            If True, modify the DataFrame in place and return None.
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Modified DataFrame or None if inplace=True.
+        """
+        # Default to y axis column if None provided
+        cols = self._prepare_values_list(cols, default=self.col_y)
+        n_cols = len(cols)
+
+        # Prepare other parameters
+        # keep existing units
+        units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
+        set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
+        add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
+        appendices = self._prepare_values_list(append, default='', n=n_cols)
+
+        # Generate new column names
+        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+
+        # Work on a copy of the data
+        df = self._get_df_copy()
         
-        if inplace:
-            return self._apply_func_to_cols(df, func, cols=cols, add_col=add_col,
-                                            set_axes=set_axes, add_labels=add_labels)
+        # Calculate antisymmetrized values
+        new_values = misc.apply(misc.antisymmetrize, seq=[df.ms[col] for col in cols])
+
+        # Assign values and metadata
+        misc.apply(df.ms._set_column,
+                column=new_cols,
+                values=new_values,
+                unit=units,
+                axis=set_axes,
+                label=add_labels)
+
+        return self._if_inplace(df, inplace)
+    
+    def normalize(self,
+                cols: list[str] | str | None = None,
+                *,
+                by: float | str,
+                append: str = '',
+                set_axes: str | list[str] | None = None,
+                add_labels: str | list[str] | None = None,
+                inplace: bool = False
+                ) -> pd.DataFrame | None:
+        """
+        Normalize values in specified columns and optionally create new columns.
+        Resulting values are assumed to be dimensionless.
+
+        Parameters
+        ----------
+        cols : list[str] | str | None
+            Column(s) to symmetrize. If None, y axis column is used.
+        by : float | str
+            Value to use for normalization. Accepts 'first', 'mid', or 'last' as string value
+        append : str
+            String to append to column names for new columns. If empty, overwrites original columns.
+        set_axes : str | list[str] | None
+            Axis or axes to set for the new columns.
+        add_labels : str | list[str] | None
+            Label(s) to add to the new columns.
+        inplace : bool
+            If True, modify the DataFrame in place and return None.
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Modified DataFrame or None if inplace=True.
+        """
+        # Default to y axis column if None provided
+        cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
+        n_cols = len(cols)
+        
+        # Prepare normalization values
+        by = self._prepare_values_list(by, default=None, n=n_cols)
+        
+        # Prepare other parameters
+        units = self._prepare_values_list(None, default='', n=n_cols) # make dimensionless
+        set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
+        add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
+        appendices = self._prepare_values_list(append, default='', n=n_cols)
+
+        # Generate new column names
+        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+
+        # Work on a copy of the data
+        df = self._get_df_copy()
+        
+        # Calculate normalized values
+        new_values = misc.apply(misc.normalize, y=[df.ms[col] for col in cols], by=by)
+
+        # Assign values and metadata
+        misc.apply(df.ms._set_column,
+                column=new_cols,
+                values=new_values,
+                unit=units,
+                axis=set_axes,
+                label=add_labels)
+
+        return self._if_inplace(df, inplace)
     
     def interpolate(
         self,
         x_new: npt.ArrayLike,
-        cols: str | list[str] = [],
+        cols: str | list[str] | None = None,
         *,
-        interp_method: Callable[[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike], npt.ArrayLike] | None = None,
-        smooth_method: Callable[[npt.ArrayLike], npt.ArrayLike] | None = None,
-        handle_na: str = 'raise'
+        interp: Callable[[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike], npt.ArrayLike] | None = None,
+        smooth: Callable[[npt.ArrayLike], npt.ArrayLike] | None = None,
+        handle_na: str = 'raise',
+        inplace=True
         ) -> pd.DataFrame:
-        cols = self._prepare_values_list(cols, self.col_y)
-        df = self.ms[[self.col_x] + cols]
-        df = df.reindex(np.arange(len(x_new)))
-        df.ms[self.col_x] = x_new
-        
-        def interp(seq):
-            return misc.interpolate(self.x, seq, x_new,
-                                    interp_method=interp_method,
-                                    smooth_method=smooth_method,
-                                    handle_na=handle_na)
-        func = interp
-        
-        return self._apply_func_to_cols(df, func, cols=cols)
-    
-    def _apply_func_to_cols(self,
-                            df: pd.DataFrame,
-                            func: Callable[[npt.ArrayLike], npt.ArrayLike],
-                            cols: str | list[str] = [],
-                            *,
-                            add_col='',
-                            set_axes: str | list[str] | None = None,
-                            add_labels : str | list[str] | None = None,
-                            ) -> pd.DataFrame:
-    
-        cols, set_axes, add_labels = self._prepare_cols_axes_labels(cols, set_axes, add_labels)
-        
-        for i, column in enumerate(cols):
-            col = self.ms.get_column(column)
-            if add_col:
-                col_name = f"{col}_{add_col}"
-            else:
-                col_name = col
-            vals = func(self.ms[col])
-            df.ms[col_name] = vals
-            self.__setax_addlbl(col_name, set_axes[i], add_labels[i])
-        return df
-    
-    def _prepare_cols_axes_labels(self, cols, axes, labels):
-
-        cols = self._prepare_values_list(cols, self.col_y)
+        # Default to y axis column if None provided
+        cols = self._prepare_values_list(cols, default=self.col_y)
         n_cols = len(cols)
         
-        axes = self._prepare_values_list(axes, None, n_cols)
-        n_axes = len(axes)
-        if n_axes != n_cols:
-            raise ValueError(f"Number of axes ({n_axes}) must correspond "
-                             f"to number of columns ({n_cols})")  
+        # Create new df of only chosen columns
+        df = self.ms[[self.col_x] + cols]
+        # Adjust the size of the column to x values
+        df = df.reindex(np.arange(len(x_new)))
+        df.ms[self.col_x] = x_new
+
+        # Prepare interpmethod lists
+        xs = [self.x for col in cols] # list of current x values
+        ys = [self.ms[col] for col in cols] # list of current y values
+        x_new = [x_new for col in cols] # list of new x values
+        handle_na = self._prepare_values_list(handle_na, default='raise', n=n_cols)
+        interp = self._prepare_values_list(interp, default=None, n=n_cols)
+        smooth = self._prepare_values_list(smooth, default=None, n=n_cols)
         
-        labels = self._prepare_values_list(labels, None, n_cols)
-        n_labels = len(labels)
-        if n_labels != n_cols:
-            raise ValueError(f"Number of labels ({n_labels}) must correspond "
-                             f"to number of columns ({n_cols})")
-        return cols, axes, labels
+        # Calculate interpolated values
+        new_values = misc.apply(misc.interpolate, x=xs, y=ys, x_new=x_new,
+                                interp=interp, smooth=smooth, handle_na=handle_na)
+
+        # Assign values and metadata
+        misc.apply(df.ms._set_column,
+                column=cols,
+                values=new_values)
+        
+        return self._if_inplace(df, inplace)
     
+    # Protected methods
+    def _get_df_copy(self) -> pd.DataFrame:
+        return self._obj.copy(deep=True) # default deep=True, but to be sure
+    
+    def _if_inplace(self, result, inplace: bool) -> pd.DataFrame | None:
+        # For inplace, explicitly update both data and attrs
+        if inplace:
+            # Update data using pandas protected method
+            # That allows to assign df._mgr directly avoiding any
+            # discrepancies between data dtypes or length of dataframes
+            self._obj._update_inplace(result)  
+            self._obj.attrs = deepcopy(result.attrs) # Explicitly copy modified attrs
+            return None
+        else:
+            return result  # Return modified result without calling __finalize__
+           
     @staticmethod
-    def _prepare_values_list(values: str | list[str] | None,
-                             default: str | None,
-                             n: int = 1,
-                             ) -> list[str | None]:
-        if not values:
-            values = [default] * n
-        elif isinstance(values, str):
+    def _prepare_values_list(values: str | list | None,
+                            default: Any = None,
+                            n: int = 1,
+                            func: Callable | None = None,
+                            ) -> list:
+        """
+        Prepare a consistent list of values with specified length.
+
+        Parameters
+        ----------
+        values : str, list, or None
+            Input values to prepare as a list.
+        default : Any, default None
+            Default value to use if values is None.
+        n : int, default 1
+            Expected length of the resulting list.
+        func : Callable, optional
+            Function to apply to resulting list elements if provided.
+
+        Returns
+        -------
+        list
+            A list of length n containing the values or defaults.
+
+        Notes
+        -----
+        - If values is None, returns a list of n defaults
+        - If values is a string or a non-iterable, returns a single-item list
+        - If values is a list shorter than n, raises ValueError
+        - If values is a list of correct length, returns it unchanged
+        """
+        if func is not None and not isinstance(func, Callable):
+            raise TypeError("'func' should be Callable or None")
+            
+        if values is None:
+            return [default] * n
+        
+        if isinstance(values, list) and n == 1:
+            if func is not None:
+                return [func(val) for val in values]
+            return values
+        
+        # Handle non-iterable values (including strings) as single items
+        if isinstance(values, str) or not hasattr(values, '__iter__'):
             values = [values]
+        # Convert other non-list iterables to list
+        elif not isinstance(values, list):
+            values = list(values)
+
+        # Ensure values is a list by this point
+        if not isinstance(values, list):
+            raise TypeError(f"Expected string, list, or None, got {type(values).__name__}")
+
+        # Check if list length matches expected length
+        if len(values) == 1 and n > 1:
+            # Special case: if we have a single value but need n values,
+            # repeat the single value n times
+            values = values * n
+        elif len(values) != n:
+            raise ValueError(f"Expected list of length {n}, got length {len(values)}")
+
+        if func is not None:
+            return [func(val) for val in values]
         return values
         
-    def __if_inplace(self, inplace: bool) -> pd.DataFrame:
-        if inplace:
-            return self._obj
-        return self._obj.copy(deep=True)
-    
-    def __setax_addlbl(self, column: str, axis: str | None, label: str | None) -> None:
-        df = self._obj
-        if axis is not None:
-            df.ms.set_as_axis(column, axis)
-        if label is not None:
-            df.ms.add_labels({column: label})
-    
-    def _form_new_xy_df(self, x_new, y_new):
-        # df_new = pd.DataFrame({self.col_x: x_new, self.col_y: y_new})
-        n = x_new.shape[0]
-        df_new = self.ms[[self.col_x, self.col_y]]
-        df_new = self._obj.reindex(np.arange(n))
-        # df_new.ms.init_msheet(units=False)
-        # unit_x = self._obj.ms.get_unit(self.col_x)
-        # unit_y = self._obj.ms.get_unit(self.col_y)
-        # df_new.ms.set_unit(self.col_x, unit_x)
-        # df_new.ms.set_unit(self.col_y, unit_y)
-        return df_new
-    
-    # @staticmethod
-    # def convert_twoband_params_to_cm(params):
-    #     return np.asarray(params) * np.array([1e-6, 1e-6, 1e4, 1e4])
-    
-    
-    # @classmethod
-    # def __get_twoband_string_res(cls, params, bands, rho_coef=None):
-    #     p = cls.convert_twoband_params_to_cm(params)
-    #     str_res = f'n_1 = {p[0]:.2E} cm^-3\nn_2 = {p[1]:.2E} cm^-3'
-    #     str_res += f'\nmu_1 = {p[2]:.2f} cm^2/V/s\nmu_2 = {p[3]:.2f} cm^2/V/s'
-    #     twoband_xx = cls.generate_twoband_eq(kind='xx', bands='he')
-    #     rho_xx0 = twoband_xx(0, *params)
-    #     if rho_coef is not None:
-    #         str_res += f'\nRxx(H=0) = {rho_xx0/rho_coef:.2f} Ohms'
-    #     else:
-    #         str_res += f'\nrho_xx(H=0) = {rho_xx0:.2E} Ohms*m'
-    #     return str_res
-    
-    # @classmethod
-    # def __get_linear_string_res(cls, params, t=None):
-    #     str_res = f'a0 = {params[0]:.2f} Ohms'
-    #     str_res += f'\nk = {params[1]:.2E} Ohms/T'
-    #     if t is not None:
-    #         n = 1e-6/(params[1]*e*t)
-    #         str_res += f'\nn = {n:.2E} cm^-3'
-    #     return str_res
-    
-    # @classmethod        
-    # def params_to_str(cls, params, *, kind='twoband', bands='he', W=None, L=None, t=None):
-    #     match kind:
-    #         case 'linear':
-    #             return cls.__get_linear_string_res(params, t)
-    #         case 'twoband':
-    #             if W is not None and L is not None and t is not None:
-    #                 rho_coef = W*t/L
-    #             else:
-    #                 rho_coef = None
-    #             return cls.__get_twoband_string_res(params, bands, rho_coef)          
-    
-    
-    
-    
-    
-    
-
-    
+    @staticmethod
+    def _col_name_append(column, append, sep='_'):
+        if append:
+            return f"{column}{sep}{append}"
+        return column

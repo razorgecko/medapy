@@ -6,6 +6,40 @@ import numpy.typing as npt
 import pandas as pd
 
 
+# Python functionality
+def apply(func, **kwargs):
+    if not isinstance(func, Callable):
+        raise TypeError("'func' value should be callable")
+    first_param = True
+    expected_length = None
+    for param, values_list in kwargs.items():
+        try:
+            values_list[0]
+            current_length = len(values_list)
+            if first_param:
+                expected_length = current_length
+                first_param = False
+            elif current_length != expected_length:
+                raise ValueError(f"Inconsistent lengths: '{param}' has length {current_length}, "
+                                    f"expected {expected_length}")
+            
+        except TypeError:
+            raise TypeError(f"Subscriptable sequences are required for batch processing. "
+                            f"The '{param}' value '{values_list}' can not be used.")
+        except IndexError:
+            raise IndexError(f"'{param}' value is empty")
+    
+    # results = []
+    # for row in zip(*kwargs.values()):
+    #     kw_dict = dict(zip(kwargs.keys(), row))
+    #     results.append(func(**kw_dict))
+    # return results
+
+    keys = list(kwargs.keys())
+    values = zip(*kwargs.values())
+
+    return [func(**dict(zip(keys, row))) for row in values]
+
 # Pandas functionality   
 def check_monotonic_df(df: pd.DataFrame, col: str, interrupt: bool = False) -> int:
     """Check if a DataFrame column is monotonic.
@@ -477,8 +511,8 @@ def interpolate(
     y: npt.ArrayLike,
     x_new: npt.ArrayLike,
     *,
-    interp_method: Callable[[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike], npt.ArrayLike] | None = None,
-    smooth_method: Callable[[npt.ArrayLike], npt.ArrayLike] | None = None,
+    interp: Callable[[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike], npt.ArrayLike] | None = None,
+    smooth: Callable[[npt.ArrayLike], npt.ArrayLike] | None = None,
     handle_na: str = 'raise'
     ) -> np.ndarray:
     """
@@ -492,10 +526,10 @@ def interpolate(
         Original y coordinates.
     x_new : array_like
         Target x coordinates for interpolation.
-    interp_method : callable, optional
+    interp : callable, optional
         Custom interpolation function with signature f(x, y, x_new) -> y_new.
         If None, uses numpy.interp for linear interpolation.
-    smooth_method : callable, optional
+    smooth : callable, optional
         Smoothing function with signature f(y) -> y_smooth.
         If None, no smoothing is applied.
 
@@ -522,19 +556,19 @@ def interpolate(
     x, y = _validate_xy(x, y, handle_na)
     x_new = np.asarray_chkfinite(x_new)
 
-    if interp_method is not None:
-        if not callable(interp_method):
-            raise ValueError("interp_method must be callable")
+    if interp is not None:
+        if not callable(interp):
+            raise ValueError("'interp' must be callable")
     else:
-        def interp_method(x, y, x_new): return np.interp(x_new, x, y)
+        def interp(x, y, x_new): return np.interp(x_new, x, y)
 
-    if smooth_method is not None and not callable(smooth_method):
+    if smooth is not None and not callable(smooth):
         raise ValueError("smooth_method must be callable")
 
-    y_new = interp_method(x, y, x_new)
+    y_new = interp(x, y, x_new)
 
-    if smooth_method:
-        y_new = smooth_method(y_new)
+    if smooth:
+        y_new = smooth(y_new)
 
     return y_new
         
