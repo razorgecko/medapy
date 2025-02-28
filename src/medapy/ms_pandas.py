@@ -113,8 +113,10 @@ class MeasurementSheetAccessor:
             self._obj[column] = value.pint.magnitude
             self.set_unit(column, unit)
             return
-                
+        
         self._obj[column] = value
+        if column not in self.units:
+            self.set_unit(column, '')
         
     def __getattr__(self, name: str) -> pd.Series:
         """Dynamic getter for axes."""
@@ -540,7 +542,7 @@ class MeasurementSheetAccessor:
         parsed_unit = ureg.Unit(parsed_unit)
 
         # No conflict: No existing unit - set parsed unit and rename column
-        if not existing_unit:
+        if existing_unit == self.DIMENSIONLESS_UNIT:
             self.set_unit(column, parsed_unit)
             self.rename(columns={column: new_col})
             return
@@ -551,12 +553,7 @@ class MeasurementSheetAccessor:
             return
         
         # Unit conflict: give priority to unit over dimensionless
-        if existing_unit == self.DIMENSIONLESS_UNIT:
-            self.set_unit(column, parsed_unit)
-            self.rename(columns={column: new_col})
-            return
-        elif parsed_unit == self.DIMENSIONLESS_UNIT:
-            self.set_unit(column, parsed_unit)
+        if parsed_unit == self.DIMENSIONLESS_UNIT:
             self.rename(columns={column: new_col})
             return
         
@@ -610,7 +607,7 @@ class MeasurementSheetAccessor:
         column : str
             Column name
         unit : str or pint.Unit, or None
-            Unit to set. If None, removes unit
+            Unit to set. None and '' set unit to dimensionless
         """
         column = self.get_column(column)
         
@@ -620,7 +617,7 @@ class MeasurementSheetAccessor:
         unit = self._validate_unit(unit)
         unit_str = str(unit)
             
-        if unit_str == 'dimensionless':
+        if unit_str in ('', 'dimensionless', '1'):
             unit_str = self.DIMENSIONLESS_UNIT
         self._units[column] = unit_str
     
@@ -1068,6 +1065,45 @@ class MeasurementSheetAccessor:
             self._unit_pattern = self.DEFAULT_UNIT_PATTERN
     
     # Protected methods
+    def _set_column(self, column, values=None, unit=None, axis=None, label=None):
+        """
+        Set values and metadata for a dataframe column.
+        Helper method to use with other accessors 
+
+        Parameters
+        ----------
+        column : str
+            Name of the column to modify.
+        values : array-like, optional
+            Values to assign to the column.
+        unit : str, optional
+            Unit to set for the column.
+        axis : str, optional
+            Axis to set for the column.
+        label : str, optional
+            Label to add to the column.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Only performs operations for non-None parameters.
+        """
+        # Set values if provided
+        if values is not None:
+            self[column] = values
+
+        if unit is not None:
+            self.set_unit(column, unit)
+
+        if axis is not None:
+            self.set_as_axis(column, axis)
+
+        if label is not None:
+            self.add_labels({column: label})
+    
     def _get_nonuniques_with_counts(self, *sequences):
         items = [item for seq in sequences for item in seq]
         counts = Counter(items)
