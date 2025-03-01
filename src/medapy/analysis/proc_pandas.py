@@ -318,8 +318,8 @@ class DataProcessingAccessor():
     def _if_inplace(self, result, inplace: bool) -> pd.DataFrame | None:
         # For inplace, explicitly update both data and attrs
         if inplace:
-            # Update data using pandas protected method
-            # That allows to assign df._mgr directly avoiding any
+            # Update data using pandas NDFrame method _update_inplace (pandas/core/generic.py)
+            # This allows to assign df._mgr directly avoiding any
             # discrepancies between data dtypes or length of dataframes
             self._obj._update_inplace(result)  
             self._obj.attrs = deepcopy(result.attrs) # Explicitly copy modified attrs

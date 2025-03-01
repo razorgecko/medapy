@@ -946,15 +946,17 @@ class MeasurementSheetAccessor:
                ) -> pd.DataFrame:
         if isinstance(objs, pd.DataFrame):
             objs = [objs]
-
+        if drop_x:
+            for obj in objs:
+                x_axis = obj.attrs.get('_ms_axes', {}).get('x')
+                if x_axis:
+                    obj.drop(columns=x_axis, inplace=True)
+        
         all_columns = [self._obj.columns.tolist()]
         all_labels = [list(self.labels.keys())]
         all_units = [self.units]
         for obj in objs:
             columns = obj.columns.tolist()
-            x_axis = obj.attrs.get('_ms_axes', {}).get('x')
-            if drop_x and not x_axis:
-                columns = [col for col in columns if col != x_axis]
             all_columns.append(columns)
             
             labels = obj.attrs.get('_ms_labels', {})
@@ -976,6 +978,8 @@ class MeasurementSheetAccessor:
             raise ValueError("Labels of concatenating objects have duplicates "
                              f"(name: times): {str(labels_overlap)[1:-1]}")
         
+        print(self._obj.index)
+        print(objs[0].index)
         df = pd.concat(objs=[self._obj, *objs], axis='columns')
         ms_state = self.get_ms_state()
         self._set_ms_state_to_df(df, ms_state)

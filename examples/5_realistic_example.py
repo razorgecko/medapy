@@ -3,9 +3,11 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from medapy import ureg
-from medapy.analysis import electron_transport
+from medapy import ms_pandas
+from medapy.analysis.electron_transport import *
 from medapy.collection import MeasurementCollection, ContactPair, DefinitionsLoader
+
+ureg = ms_pandas.ureg # to ensure that pint UnitRegistry is the same
 
 # Setup path to folder with data
 script_dir = Path(__file__).parent
@@ -32,7 +34,7 @@ files_xy = collection.filter(contacts=[pair_10mA, (20, 40)])
 print('Files Rxy', files_xy, sep='\n', end='\n\n')
 xy_datafile = files_xy.files[0]
 
-# Alternatively we could have manually set the names
+# Alternatively we can set the names manually
 # xx_datafile = data_dir / 'a_twoband_test_I1-5(10mA)_V20-21_Rxx.csv'
 # xy_datafile = data_dir / 'a_twoband_test_I1-5(10mA)_V20-40_Rxy.csv'
 
@@ -44,11 +46,17 @@ xy = pd.read_csv(xy_datafile.path, delimiter=',')
 custom_unit_dict = dict(Ohms='ohm')
 xx.ms.init_msheet(translations=custom_unit_dict, patch_rename=True)
 xy.ms.init_msheet(translations=custom_unit_dict, patch_rename=True)
+xx.ms.rename({'Resistance': 'Resistance_xx'})
+xy.ms.rename({'Resistance': 'Resistance_xy'})
 
+# Concatenate different dataframes preserving MS metadata
+data = xx.ms.concat(xy)
+data.ms.add_labels({'Field': 'H',
+                    'Resistance_xx': 'Rxx',
+                    'Resistance_xy': 'Rxy'})
 
 # Validate that x axis (Field column) is monotonously increasing
-xx.etr.ensure_increasing(inplace=True)
-xy.etr.ensure_increasing(inplace=True)
+data.etr.ensure_increasing(inplace=True)
 
 # Geometric parameters of the sample
 length = 20e-6
@@ -65,17 +73,21 @@ t = 400e-9
 # The name will be modified by attaching '_xx' or '_xy'
 # To not add the column pass empty string
 # inplace parameter is mimicking pandas and determines whether to modify current dataframe
-xx.etr.r2rho('xx', t, width=width, length=length, inplace=True, set_axis='y', add_label='rho')
-xy.etr.r2rho('xy', t, add_col='custom_rho', inplace=True, set_axis='y', add_label='rho')
+data.etr.r2rho('xx', col='Rxx', t=t, width=width, length=length,
+               new_col='Resistivity', add_label='rho_xx',
+               inplace=True)
+data.etr.r2rho('xy', col='Rxy', t=t,
+               new_col='Resistivity', set_axis='y', add_label='rho_xy',
+               inplace=True)
 
 # Make a standard Hall fitting on a range > 11
-# Currently the range is not an optional parameter, to use whole range pass (None, None)
-# This adds the fit result to a new column
-# add_col is an appendix to the column name of y axis (default - 'linHall')
-lin_coefs = xy.etr.fit_linhall((11, None), set_axis='l', add_label='flin')
+# If add_col is not empty, fit values will be added to a new column
+# add_col is an appendix to the column name used (default - 'linHall')
+lin_coefs, _ = data.etr.fit_linhall(x_range=(11, None), set_axis='l', add_label='flin', inplace=True)
 
 # Select a range of data inside or outside a specific x axis range
-part_xx = xx.etr.select_range((-6, 6), inside_range=False)
+part_xx = data.ms[['Field', 'rho_xx']]
+part_xx = part_xx.etr.select_range((-6, 6), inside_range=False) # keep only data outside the range
 
 # Two-band fitting
 bands = 'he' # hole and electron bands
@@ -85,37 +97,42 @@ p0 = [1e26, 1e25, 0.015, 0.02] # starting values [n1, n2, mu1, mu2] in SI units
 # can be bool, path to file, or opened file. If True, prints to console
 # Try to use
 # report = result_dir / 'twoband_reports.txt'
-p_opt_xy = xy.etr.fit_twoband(p0, kind='xy', bands=bands, extension=part_xx, report=True,
-                              set_axis='f', add_label='f2bnd')
-p_opt_xx = xx.etr.fit_twoband(p0, kind='xx', bands=bands, field_range=(-6, 6), inside_range=False,
-                              extension=xy, report=True, set_axis='f', add_label='f2bnd')
+p_opt_xy, _ = data.etr.fit_twoband(p0, col='rho_xy', kind='xy', bands=bands,
+                                   extension=part_xx, set_axis='f', add_label='f2_xy',
+                                   report=True, inplace=True)
+p_opt_xx, _ = data.etr.fit_twoband(p0, col='rho_xx', kind='xx', bands=bands,
+                                   field_range=(-6, 6), inside_range=False,
+                                   extension=(data.ms.x, data.ms.y),
+                                   add_label='f2_xx', report=True, inplace=True)
 
+# It would be easier to calculate xx values from p_opt
+# but current approach is used to illustrate different set of fit_twoband parameters
+# data.ms['Resistivity_xx_2bnd'] = etr.gen_mr2bnd_eq(bands)(data.ms.x, *p_opt_xy)
+# data.ms.add_labels({'Resistivity_xx_2bnd': 'f2_xx'})
 
 # Apply scientific format to specified columns
 # the rest will use float_format (default - '%.4f')
-cols = ['rho', 'f2bnd', 'flin']
-fmtr_xx = {col: '{:.4E}' for col in cols[:-1]}
-fmtr_xy = {col: '{:.4E}' for col in cols}
-xx.ms.save_msheet(result_dir / 'xx.csv', formatter=fmtr_xx)
-xy.ms.save_msheet(result_dir / 'xy.csv', formatter=fmtr_xy, float_format=None)
+cols = ['rho_xx', 'rho_xy', 'flin', 'f2_xy', 'f2_xx']
+fmtr = {col: '{:.4E}' for col in cols}
+data.ms.save_msheet(result_dir / 'data.csv', formatter=fmtr)
 
 # Plot results
 fig, [ax1, ax2] = plt.subplots(ncols=2, figsize=(10, 5))
 fig.suptitle('Fit results')
 
 ax1.set_title('xx')
-ax1.set_xlabel('Field (T)')
-ax1.set_ylabel('rho_xx (ohm*m)')
+ax1.set_xlabel(f'Field ({data.ms.get_unit("H")})')
+ax1.set_ylabel(f'rho_xx ({data.ms.get_unit("rho_xx")})')
 ax2.set_title('xy')
-ax2.set_xlabel('Field (T)')
-ax2.set_ylabel('rho_xy (ohm*m)')
+ax2.set_xlabel(f'Field ({data.ms.get_unit("H")})')
+ax2.set_ylabel(f'rho_xy ({data.ms.get_unit("rho_xy")})')
 
 # We can access all the data by axis names assigned during the processing
-ax1.plot(part_xx.ms.x, part_xx.ms.y, '.', label='data')
-ax2.plot(xy.ms.x, xy.ms.y, '.', label='data')
-ax1.plot(xx.ms.x, xx.ms.f, 'r--', lw=1.2, label='fit')
-ax2.plot(xy.ms.x, xy.ms.f, 'r--', lw=1.2, label='fit')
-ax2.plot(xy.ms.x, xy.ms.l, 'k--', lw=1.2, label='fit lin')
+ax1.plot(data.ms.x, data.ms['rho_xx'], '.', label='data')
+ax1.plot(data.ms.x, data.ms['f2_xx'], 'r--', lw=1.2, label='fit')
+ax2.plot(data.ms.x, data.ms['rho_xy'], '.', label='data')
+ax2.plot(data.ms.x, data.ms['f2_xy'], 'r--', lw=1.2, label='fit')
+ax2.plot(data.ms.x, data.ms['flin'], 'k--', lw=1.2, label='fit lin')
 
 ax1.legend()
 ax2.legend()

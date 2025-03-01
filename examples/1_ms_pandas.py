@@ -31,9 +31,9 @@ df.ms.add_label('Field', 'Champ')
 # Axis assignment
 # By default, x, y, z axes are assigned to the first three columns
 # {'x': 'Field', 'y': 'Current', 'z': 'Voltage'}
-df.ms.set_as_axis('u', 'R') # add new axis
-df.ms.set_as_axis('y', 'rho') # reassign y axis to rho
-df.ms.set_as_axis('x', 'Voltage', swap=True) # assign axis and swap if both exist
+df.ms.set_as_axis('R', 'u') # add new axis
+df.ms.set_as_axis('rho', 'y') # reassign y axis to rho
+df.ms.set_as_axis('Voltage', 'x', swap=True) # assign axis and swap if both exist
 print('\nMSheet with labels and new axes:')
 print(df.ms)
 
