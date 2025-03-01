@@ -863,12 +863,12 @@ class MeasurementSheetAccessor:
         return next((axis for axis, col in self._axes.items() 
                     if col == column), None)
     
-    def set_as_axis(self, axis: str, name: Union[str, None], swap: bool = False) -> None:
+    def set_as_axis(self, name: Union[str, None], axis: str, swap: bool = False) -> None:
         """Set column as a named axis or remove axis assignment if name is None.
         
         Args:
-            axis: Name of the axis ('x', 'y', 'z', etc.)
             name: Column name, label, or None to remove assignment
+            axis: Name of the axis ('x', 'y', 'z', etc.)
             swap: If True and column is already assigned to another axis,
                 swap the axis assignments. If False, remove the previous
                 axis assignment.
@@ -902,15 +902,15 @@ class MeasurementSheetAccessor:
     
     def set_as_x(self, column: Union[str, None], swap: bool = False) -> None:
         """Set column as x axis"""
-        self.set_as_axis('x', column, swap)
+        self.set_as_axis(column, 'x', swap)
         
     def set_as_y(self, column: Union[str, None], swap: bool = False) -> None:
         """Set column as y axis"""
-        self.set_as_axis('y', column, swap)
+        self.set_as_axis(column, 'y', swap)
     
     def set_as_z(self, column: Union[str, None], swap: bool = False) -> None:
         """Set column as z axis"""
-        self.set_as_axis('z', column, swap)
+        self.set_as_axis(column, 'z', swap)
     
     def remove_axis(self, axis: str) -> None:
         """Remove an axis assignment."""
