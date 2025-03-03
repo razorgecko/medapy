@@ -119,7 +119,7 @@ class DataProcessingAccessor():
             Modified DataFrame or None if inplace=True.
         """
         # Default to y axis column if None provided
-        cols = self._prepare_values_list(cols, default=self.col_y)
+        cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
         n_cols = len(cols)
 
         # Prepare other parameters
@@ -178,7 +178,7 @@ class DataProcessingAccessor():
             Modified DataFrame or None if inplace=True.
         """
         # Default to y axis column if None provided
-        cols = self._prepare_values_list(cols, default=self.col_y)
+        cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
         n_cols = len(cols)
 
         # Prepare other parameters
@@ -280,7 +280,7 @@ class DataProcessingAccessor():
         interp: Callable[[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike], npt.ArrayLike] | None = None,
         smooth: Callable[[npt.ArrayLike], npt.ArrayLike] | None = None,
         handle_na: str = 'raise',
-        inplace=True
+        inplace: bool = False
         ) -> pd.DataFrame:
         # Default to y axis column if None provided
         cols = self._prepare_values_list(cols, default=self.col_y)

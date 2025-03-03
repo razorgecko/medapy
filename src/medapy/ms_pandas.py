@@ -409,17 +409,12 @@ class MeasurementSheetAccessor:
         try:
             if formatter is not None:
                 self._format_df_inplace(df, formatter)
-                df.ms.clear_units(restore_names=True)
-                df.to_csv(output_path, header=header, index=index, **kwargs)
-            else:
-                df.ms.clear_units(restore_names=True)
-                df.to_csv(
-                    output_path,
-                    float_format=float_format,
-                    header=header,
-                    index=index,
-                    **kwargs
-                )
+            df.ms.clear_units(restore_names=True)
+            df.to_csv(output_path,
+                      float_format=float_format,
+                      header=header,
+                      index=index,
+                      **kwargs)
         except (IOError, OSError) as e:
             raise IOError(f"Failed to save file to {output_path}: {e}")
 
@@ -947,13 +942,18 @@ class MeasurementSheetAccessor:
         if isinstance(objs, pd.DataFrame):
             objs = [objs]
         if drop_x:
+            objs = [obj.copy(deep=True) for obj in objs]
             for obj in objs:
                 x_axis = obj.attrs.get('_ms_axes', {}).get('x')
                 if x_axis:
                     obj.drop(columns=x_axis, inplace=True)
+                try:
+                    obj.ms._clear_unused()
+                except Exception as e:
+                    raise Exception(e)
         
         all_columns = [self._obj.columns.tolist()]
-        all_labels = [list(self.labels.keys())]
+        all_labels = [self.labels]
         all_units = [self.units]
         for obj in objs:
             columns = obj.columns.tolist()
@@ -972,14 +972,11 @@ class MeasurementSheetAccessor:
             raise ValueError("Column names of concatenating objects have duplicates "
                              f"(name: times): {str(columns_overlap)[1:-1]}")
         
-        labels_overlap = self._get_nonuniques_with_counts(
-            map(lambda x: x.keys(), *all_labels))
+        labels_overlap = self._get_nonuniques_with_counts(*map(dict.keys, all_labels))
         if labels_overlap:
             raise ValueError("Labels of concatenating objects have duplicates "
                              f"(name: times): {str(labels_overlap)[1:-1]}")
         
-        print(self._obj.index)
-        print(objs[0].index)
         df = pd.concat(objs=[self._obj, *objs], axis='columns')
         ms_state = self.get_ms_state()
         self._set_ms_state_to_df(df, ms_state)
