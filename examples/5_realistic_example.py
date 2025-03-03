@@ -4,7 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from medapy import ms_pandas
-from medapy.analysis.electron_transport import *
+from medapy.analysis.electron_transport import etr, etr_pandas
 from medapy.collection import MeasurementCollection, ContactPair, DefinitionsLoader
 
 ureg = ms_pandas.ureg # to ensure that pint UnitRegistry is the same
@@ -21,7 +21,7 @@ parameters = DefinitionsLoader().get_all()
 # Initialize folder as measurement collection
 collection = MeasurementCollection(data_dir, parameters)
 
-# For fittin we select suitable files by current magnitude
+# For fitting, we select suitable files by parameters; current magnitude in this example
 pair_10mA = ContactPair(1, 5, 'I', 10e-3) # create contact pair I1-5(10mA)
 
 # Filter to select a specific xx and xy files by criteria
@@ -74,10 +74,10 @@ t = 400e-9
 # To not add the column pass empty string
 # inplace parameter is mimicking pandas and determines whether to modify current dataframe
 data.etr.r2rho('xx', col='Rxx', t=t, width=width, length=length,
-               new_col='Resistivity', add_label='rho_xx',
+               new_col='Resistivity_xx', add_label='rho_xx',
                inplace=True)
 data.etr.r2rho('xy', col='Rxy', t=t,
-               new_col='Resistivity', set_axis='y', add_label='rho_xy',
+               new_col='Resistivity_xy', set_axis='y', add_label='rho_xy',
                inplace=True)
 
 # Make a standard Hall fitting on a range > 11
@@ -107,8 +107,8 @@ p_opt_xx, _ = data.etr.fit_twoband(p0, col='rho_xx', kind='xx', bands=bands,
 
 # It would be easier to calculate xx values from p_opt
 # but current approach is used to illustrate different set of fit_twoband parameters
-# data.ms['Resistivity_xx_2bnd'] = etr.gen_mr2bnd_eq(bands)(data.ms.x, *p_opt_xy)
-# data.ms.add_labels({'Resistivity_xx_2bnd': 'f2_xx'})
+# data.etr.calculate_twoband(p_opt_xy, cols='rho_xx', kinds='xx', bands=bands,
+#                            add_labels='f2_xx', inplace=True)
 
 # Apply scientific format to specified columns
 # the rest will use float_format (default - '%.4f')

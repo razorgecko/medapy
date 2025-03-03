@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -50,7 +50,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
         # Should we convert r to 'ohm' before calculating 'rho'?
         r_unit = pint.Unit(df.ms.get_unit(col))
         unit = r_unit * t_unit
-        new_col = f"{new_col}_{kind}"
+        # new_col = f"{new_col}_{kind}"
         
         # Calculate resistivity values
         new_values = etr.r2rho(df.ms[col], kind=kind, t=t, width=width, length=length)
@@ -68,9 +68,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
                     set_axis: str | None = None,
                     add_label: str | None = None,
                     inplace: bool = False
-                    ) -> np.ndarray | list[np.ndarray]:
-        
-        
+                    ) -> tuple[np.ndarray, pd.DataFrame | None]:
         # Default to y axis column if None provided
         col = self.col_y if col is None else self.ms.get_column(col)
         
@@ -104,7 +102,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
                     add_col: str | None = '2bnd',
                     set_axis: str | None = None, add_label : str | None = None,
                     inplace: bool = False,
-                    **kwargs) -> tuple[float, float, float, float]:
+                    **kwargs) -> tuple[tuple, pd.DataFrame | None]:
         # Default to y axis column if None provided
         col = self.col_y if col is None else self.ms.get_column(col)
         
@@ -142,6 +140,58 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
             df.ms._set_column(new_col, new_values, unit, set_axis, add_label)
 
         return coefs, self._if_inplace(df, inplace)
+    
+    def calculate_twoband(self,
+                          p: tuple[float, float, float, float],
+                          cols: str | list[str] | None = None,
+                          *,
+                          kinds: str | list[str],
+                          bands: str,
+                          append: str = '2bnd',
+                          set_axes: str | list[str] | None = None,
+                          add_labels: str | list[str] | None = None,
+                          inplace: bool = False
+                          ) -> pd.DataFrame | None:
+        # Default to y axis column if None provided
+        cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
+        n_cols = len(cols)
+
+        # Prepare other parameters
+        # keep existing units
+        units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
+        set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
+        add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
+        appendices = self._prepare_values_list(append, default='2bnd', n=n_cols)
+        
+        # Generate new column names
+        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+        
+        # Prepare twoband functions list
+        def kind2func(kind, bands):
+            mapping = {'xx': etr.gen_mr2bnd_eq(bands),
+                       'xy': etr.gen_hall2bnd_eq(bands)}
+            return mapping.get(kind)
+        
+        kinds = self._prepare_values_list(kinds, default=None, n=n_cols)
+        funcs = self._prepare_values_list(kinds, default=None,
+                                          func=lambda x: kind2func(x, bands),
+                                          n=n_cols)
+        
+        # Work on a copy of the data
+        df = self._get_df_copy()
+        
+        # Calculate fit values
+        new_values = [func(self.x, *p) for func in funcs]
+
+        # Assign values and metadata
+        misc.apply(df.ms._set_column,
+                column=new_cols,
+                values=new_values,
+                unit=units,
+                axis=set_axes,
+                label=add_labels)
+        
+        return self._if_inplace(df, inplace)
         
     # @staticmethod
     # def convert_twoband_params_to_cm(params):
