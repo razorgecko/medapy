@@ -3,7 +3,7 @@ from pathlib import Path
 
 from medapy.collection import (MeasurementFile,
                                ParameterDefinition)
-                               
+from medapy.utils import validations                               
 
 class MeasurementCollection:
     def __init__(self, 
@@ -12,7 +12,7 @@ class MeasurementCollection:
                  file_pattern: str = "*.*",
                  separator: str = "_"):
         
-        self._verify_class_in_iterable(parameters, ParameterDefinition, iter_name='parameters')
+        validations.class_in_iterable(parameters, ParameterDefinition, iter_name='parameters')
         self.param_definitions = {param.name_id: param for param in parameters}
         self.separator = separator
 
@@ -27,7 +27,7 @@ class MeasurementCollection:
             if not collection:
                 self.files = []
                 return
-            self._verify_class_in_iterable(collection, MeasurementFile, iter_name='collection')
+            validations.class_in_iterable(collection, MeasurementFile, iter_name='collection')
             self.files = list(collection)
             return
         raise ValueError("collection can be str, Path, or Iterable; "
@@ -179,7 +179,7 @@ class MeasurementCollection:
     
     def extend(self, iterable: Iterable) -> None:
         """Extend collection from iterable"""
-        self._verify_class_in_iterable(iterable, MeasurementFile, iter_name='iterable')
+        validations.class_in_iterable(iterable, MeasurementFile, iter_name='iterable')
         self.files.extend(iterable)
     
     def pop(self, index: int = -1):
@@ -199,11 +199,6 @@ class MeasurementCollection:
     
     def to_list(self):
         return self.files.copy()
-    
-    @staticmethod
-    def _verify_class_in_iterable(iterable, class_obj, iter_name):
-        if not all(isinstance(item, class_obj) for item in iterable):
-            raise TypeError(f"All items in {iter_name} must be {class_obj.__name__} objects")
     
     def __get_repr_header(self):
         return f"{'':2}    Filename\n"
