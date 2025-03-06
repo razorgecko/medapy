@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import re
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
 from decimal import Decimal
 from typing import Iterable
@@ -9,7 +9,7 @@ from .parameter import (ParameterDefinition,
                         DefinitionsLoader,
                         Parameter,
                         ParameterState)
-
+from medapy.utils import validations
 
 class PolarizationType(Enum):
     CURRENT = 'I'
@@ -82,6 +82,10 @@ class ContactPair:
             return self == pair
         return (self.first_contact == pair[0] and 
                 self.second_contact == pair[1])
+    
+    def to_tuple(self):
+        return (self.first_contact, self.second_contact,
+                self.type, self.magnitude)
         
     def __str__(self) -> str:
         contacts = f"{self.first_contact}"
@@ -90,7 +94,11 @@ class ContactPair:
 
         result = f"{self.type.value}{contacts}"
         if self.magnitude is not None:
-            result += f"({self.magnitude})"
+            if self.type == PolarizationType.CURRENT:
+                unit = 'A'
+            else:
+                unit = 'V'
+            result += f"({self.magnitude:.1e}{unit})"
         return result
 
 @dataclass(frozen=False)
@@ -121,12 +129,22 @@ class MeasurementFile:
             param_defs = DefinitionsLoader(parameters)
             self.param_definitions = {dfn.name_id: dfn for dfn in param_defs.get_all()}
         else:
+            item_type = type(parameters[0])
+            validations.class_in_iterable(parameters, item_type, iter_name='parameters')
             # Convert list of parameters to dictionary
-            self.param_definitions = {}
-            for param in parameters:
-                name = param.name_id
-                self.param_definitions[name] = param
-                
+            self.param_definitions = dict()
+            if item_type == Parameter:
+                self.parameters = dict()
+                for param in parameters:
+                    name = param.definition.name_id
+                    self.param_definitions[name] = param.definition
+                    self.parameters[name] = param.copy()
+                return
+            if item_type == ParameterDefinition:
+                for param in parameters:
+                    name = param.name_id
+                    self.param_definitions[name] = param
+                    
         self.parameters = dict()
         self._parse_filename()
 
@@ -257,3 +275,133 @@ class MeasurementFile:
                 except KeyError:
                     self.parameters[param_name] = param
                 continue
+    
+    def merge(
+        self,
+        other: 'MeasurementFile',
+        strict_mode: bool = False
+        ) -> 'MeasurementFile':
+        """
+        Merge this file representation with another one.
+
+        Args:
+            other: Another FileRepresentation to merge with
+            strict_mode: If True, verify all parameters are equal before merging
+
+        Returns:
+            A new FileRepresentation with merged parameters and contact pairs
+
+        Raises:
+            ValueError: If strict_mode is True and parameters differ between files
+        """
+        # Check parameters in strict mode
+        if strict_mode:
+            for param_name, param in self.parameters.items():
+                if param_name in other.parameters:
+                    other_param = other.parameters[param_name]
+                    # Check if parameters are equal
+                    if (param.state != other_param.state):
+                        raise ValueError(f"Parameter '{param_name}' differs between files in strict mode")
+
+        # Merge parameter definitions (self take precedence in case of conflict)
+        # merged_definitions = {}
+        # merged_definitions.update(other.param_definitions)
+        # merged_definitions.update(self.param_definitions)
+        # definitions_list = list(merged_definitions.values())
+                
+        # Merge parameters (self take precedence in case of conflict)
+        merged_parameters = {}
+        merged_parameters.update(other.parameters)
+        merged_parameters.update(self.parameters)
+        parameters_list = [param.copy() for param in merged_parameters.values()]
+        
+        # Merge contact pairs (removing duplicates)
+        merged_contacts = []
+        seen_contacts = set()
+
+        # Add contacts from self
+        for contact in self.contact_pairs:
+            key = contact.to_tuple()
+            if key not in seen_contacts:
+                merged_contacts.append(contact)
+                seen_contacts.add(key)
+
+        # Add contacts from other
+        for contact in other.contact_pairs:
+            key = contact.to_tuple()
+            if key not in seen_contacts:
+                merged_contacts.append(contact)
+                seen_contacts.add(key)
+
+        # Create a new MeasurementFile with merged data
+        # Use the separator from the current instance
+        merged_file = type(self)(
+            path=self.path,  # Path will be set by the caller
+            parameters=parameters_list,
+            separator=self.separator
+        )
+        merged_file.contact_pairs = merged_contacts
+
+        return merged_file
+
+            
+    def generate_filename(
+        self,
+        prefix: str = None,
+        postfix: str = None,
+        sep: str = None,
+        ext: str = ".dat"
+    ) -> str:
+        """
+        Generate a filename based on stored parameters and contact pairs.
+
+        Args:
+            prefix: Optional prefix for the filename
+            postfix: Optional postfix for the filename
+            separator: Optional separator (defaults to instance separator if None)
+            extension: File extension (defaults to .dat)
+
+        Returns:
+            A string representing the new filename
+        """
+        # Use instance separator if not provided
+        sep = sep if sep is not None else self.separator
+
+        # Build the contact part of the filename
+        contact_parts = []
+        for contacts in self.contact_pairs:
+                contact_parts.append(str(contacts))
+
+        # Determine parameters order
+        parameters_ordered = []
+        # Add sweeping parameters
+        for param in self.parameters.values():
+            if param.state.is_swept:
+                parameters_ordered.append(param)
+        # Add fixed parameters
+        for param in self.parameters.values():
+            if not param.state.is_swept:
+                parameters_ordered.append(param)
+        
+        param_parts = []
+        # Build the parameter part of the filename       
+        for param in parameters_ordered:
+            param_parts.append(str(param))
+
+        # Combine all parts
+        filename_parts = []
+        if prefix:
+            filename_parts.append(prefix)
+        filename_parts.extend(contact_parts)
+        filename_parts.extend(param_parts)
+        if postfix:
+            filename_parts.append(postfix)
+
+        # Join with separator and add extension
+        filename = sep.join(filename_parts)
+
+        # Add extension if it doesn't already have one
+        if ext and not ext.startswith('.'):
+            ext = f".{ext}"
+
+        return f"{filename}{ext}"

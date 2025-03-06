@@ -59,11 +59,23 @@ temp_param = ParameterDefinition(
 )
 
 # Create test measurement file representation
-testname = "sample_V1-5(1e-3A)_V3-7_V2-8_V4_V6_I11_sweepField_B-14to14T_T=3.0K_date.csv"
+testname = "sample_V1-5(1e-3V)_V3-7_V2-8_V4_V6_I11_sweepField_B-14to14T_T=3.0K_date.csv"
 testfile = MeasurementFile(testname, parameters=[field_param, temp_param])
 
+testname2 = "sample_I1-5(1e-6A)_V3-7_V2-7_V4_V7_I12_sweepField_B-14to14T_T=3.0K_date.csv"
+testfile2 = MeasurementFile(testname2, parameters=[field_param, temp_param])
+
+# Merge two files
+# If strict mode, checks that parameters of files are equal 
+testfile3 = testfile.merge(testfile2, strict_mode=True)
+
+# Generate filename based on contacts configuration and parameters
+# To change separator between name parts, use 'sep' parameter (default - '_')
+f = testfile3.generate_filename(prefix='sample', postfix='merged', ext='csv')
+print(f)
+
 # Print states of parameters parsed from testname 
-print(*list(map(str, testfile.parameters.values())), sep='\n', end='\n\n')
+print(*list(map(repr, testfile.parameters.values())), sep='\n', end='\n\n')
 
 # Load default parameter definitions
 parameters = DefinitionsLoader().get_all()

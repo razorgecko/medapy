@@ -19,8 +19,8 @@
 - [ ] Sort files in collection
     - [x] by parameter value
     - [ ] by sweep direction
-- [ ] Concatenate mfiles (check equal parameters, append contacts)
-- [ ] Generate filename based on the state (accept sample name, prefix, postfix, extension)
+- [x] Concatenate mfiles (check equal parameters, append contacts)
+- [x] Generate filename based on the state (accept sample name, prefix, postfix, extension)
 - [ ] Dump/load collection to/from db
 - [ ] Move/copy files from collection to
 - [ ] Link dataframes to file objects in collection (?)

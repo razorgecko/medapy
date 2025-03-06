@@ -87,8 +87,8 @@ class ParameterDefinition:
         # Default patterns
         default_patterns = {
             'sweep': r'sweep{NAME}|{NAME}sweep',
-            'range': r'{SNAME}{VALUE}to{VALUE}{UNIT}?',
-            'fixed': r'{SNAME}=?{VALUE}{UNIT}?'
+            'range': r'{NAME}{VALUE}to{VALUE}{UNIT}?',
+            'fixed': r'{NAME}=?{VALUE}{UNIT}?'
         }
 
         # Merge with custom patterns if provided
@@ -102,10 +102,14 @@ class ParameterDefinition:
             # Replace all placeholders with actual patterns
             final_pattern = pattern_template
             for placeholder, value in base.items():
-                final_pattern = final_pattern.replace(
-                    f'{{{placeholder}}}',
-                    f'({value})' if placeholder == 'VALUE' else f'(?:{value})'
-                    )
+                if placeholder == 'VALUE' or placeholder == 'UNIT':
+                    final_pattern = final_pattern.replace(
+                        f'{{{placeholder}}}',
+                        f'({value})')
+                else:
+                    final_pattern = final_pattern.replace(
+                        f'{{{placeholder}}}',
+                        f'(?:{value})')
 
             try:
                 compiled_patterns[pattern_name] = re.compile(final_pattern)
@@ -132,6 +136,17 @@ class _ParameterState:
     min_val: Decimal | None = None
     max_val: Decimal | None = None
     sweep_direction: SweepDirection = SweepDirection.UNDEFINED
+    unit: str | None = None
+    
+    def __eq__(self, other):
+        for attr, value in self.__dict__.items():
+            if value != other.__dict__.get(attr):
+                return False
+        return True
+    
+    def __copy__(self):
+        # Method is not tested
+        return type(self)(**self.__dict__.copy())
     
 class Parameter:
     def __init__(self, definition: ParameterDefinition, **kwargs):
@@ -144,18 +159,22 @@ class Parameter:
         if not m:
             return False
         value_str = m.group(1)
+        unit_str = m.group(2)
         self.set_fixed(self._value2decimal(value_str))
+        self.state.unit = unit_str
         return True
     
     def parse_range(self, text: str) -> bool:
-        m = self.definition.match('range', text)
+        m = self.definition.search('range', text)
         if not m:
             return False
         start_str, end_str = m.group(1), m.group(2)
+        unit_str = m.group(3)
         self.set_swept(
             self._value2decimal(start_str),
             self._value2decimal(end_str)
             )
+        self.state.unit = unit_str
         return True
 
     def parse_sweep(self, text: str) -> bool:
@@ -193,6 +212,7 @@ class Parameter:
         self.state.max_val = other.state.max_val or self.state.max_val
         self.state.sweep_direction = (other.state.sweep_direction or 
                                       self.state.sweep_direction)
+        self.state.unit = other.state.unit or self.state.unit
     
     def _value2decimal(self, value_str):
         """Convert string value to Decimal, handling special values"""
@@ -200,7 +220,38 @@ class Parameter:
             return self.definition.special_values[value_str]
         return Decimal(value_str)
     
+    def copy(self):
+        return self.__copy__()
+    
+    def __copy__(self):
+        return type(self)(self.definition,
+                          **self.state.__dict__.copy())
+    
     def __str__(self):
+        if self.definition.long_names:
+            lname = sorted(list(self.definition.long_names))[0]
+        else:
+            lname = None
+        if self.definition.short_names:
+            sname = sorted(list(self.definition.short_names))[0]
+        else:
+            sname = None
+
+        if self.state.is_swept:
+            name = lname or sname
+            s = f'sweep{name}'
+            if self.state.min_val and self.state.max_val:
+                mn, mx = self.state.min_val, self.state.max_val
+                if self.state.sweep_direction == SweepDirection.DECREASING:
+                    mx, mn = mn, mx
+                s += f'{mn}to{mx}{self.state.unit or ""}'
+            return s
+        else:
+            name = sname or lname
+            return f'{name}={self.state.value}{self.state.unit or ""}'
+        
+    
+    def __repr__(self):
         return ('Parameter: '
                 f'[type: {self.definition.name_id}, '
                 f'value: {self.state.value}, is_swept: {self.state.is_swept}, '
@@ -254,6 +305,7 @@ class ParameterState(NamedTuple):
     min: float | None
     max: float | None
     sweep_direction: SweepDirection
+    unit: str | None
 
     @staticmethod
     def to_float(val) -> float | None:
@@ -266,7 +318,8 @@ class ParameterState(NamedTuple):
             is_swept=state.is_swept,
             min=cls.to_float(state.min_val),
             max=cls.to_float(state.max_val),
-            sweep_direction=state.sweep_direction
+            sweep_direction=state.sweep_direction,
+            unit=state.unit
             )
     
     @property
