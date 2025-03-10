@@ -133,7 +133,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
             # Prepare metadata
             unit = df.ms.get_unit(col)
             # Prepare new column name
-            new_col = self._col_name_append(col, append=add_col)
+            new_col = self._col_name_append(col, append=f'{add_col}{bands}')
             # Calculate fit values
             new_values = func_2bnd(df.ms.x, *coefs)
             # Assign values and metadata
@@ -161,7 +161,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
         units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
         set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
         add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
-        appendices = self._prepare_values_list(append, default='2bnd', n=n_cols)
+        appendices = self._prepare_values_list(append, default='2bnd', n=n_cols, func=lambda x: x + bands)
         
         # Generate new column names
         new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
@@ -192,50 +192,4 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
                 label=add_labels)
         
         return self._if_inplace(df, inplace)
-        
-    # @staticmethod
-    # def convert_twoband_params_to_cm(params):
-    #     return np.asarray(params) * np.array([1e-6, 1e-6, 1e4, 1e4])
-    
-    
-    # @classmethod
-    # def __get_twoband_string_res(cls, params, bands, rho_coef=None):
-    #     p = cls.convert_twoband_params_to_cm(params)
-    #     str_res = f'n_1 = {p[0]:.2E} cm^-3\nn_2 = {p[1]:.2E} cm^-3'
-    #     str_res += f'\nmu_1 = {p[2]:.2f} cm^2/V/s\nmu_2 = {p[3]:.2f} cm^2/V/s'
-    #     twoband_xx = cls.generate_twoband_eq(kind='xx', bands='he')
-    #     rho_xx0 = twoband_xx(0, *params)
-    #     if rho_coef is not None:
-    #         str_res += f'\nRxx(H=0) = {rho_xx0/rho_coef:.2f} Ohms'
-    #     else:
-    #         str_res += f'\nrho_xx(H=0) = {rho_xx0:.2E} Ohms*m'
-    #     return str_res
-    
-    # @classmethod
-    # def __get_linear_string_res(cls, params, t=None):
-    #     str_res = f'a0 = {params[0]:.2f} Ohms'
-    #     str_res += f'\nk = {params[1]:.2E} Ohms/T'
-    #     if t is not None:
-    #         n = 1e-6/(params[1]*e*t)
-    #         str_res += f'\nn = {n:.2E} cm^-3'
-    #     return str_res
-    
-    # @classmethod        
-    # def params_to_str(cls, params, *, kind='twoband', bands='he', W=None, L=None, t=None):
-    #     match kind:
-    #         case 'linear':
-    #             return cls.__get_linear_string_res(params, t)
-    #         case 'twoband':
-    #             if W is not None and L is not None and t is not None:
-    #                 rho_coef = W*t/L
-    #             else:
-    #                 rho_coef = None
-    #             return cls.__get_twoband_string_res(params, bands, rho_coef)          
-    
-    
-    
-    
-    
-    
 
-    

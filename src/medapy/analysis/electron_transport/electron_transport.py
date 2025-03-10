@@ -336,3 +336,18 @@ def _band_note_to_sign(band_note: str) -> int:
         return 1
     elif band_note == 'e':
         return -1
+
+def hall_fit_to_str(p, x_unit='T', y_unit='ohm*m', n=None, n_unit='m^-3'):
+    str_res = (f'a0 = {p[0]:.2e} {y_unit}\n'
+               f'k = {p[1]:.2e} {y_unit}/{x_unit}')
+    if n:
+        str_res += f'\nn = {n:.2e} {n_unit}'
+    return str_res
+
+def twoband_fit_to_str(p, bands):
+    b1, b2 = bands
+    str_res = (f'n1({b1}) = {p[0]:.2e} m^-3\n'
+               f'n2({b2}) = {p[1]:.2e} m^-3\n'
+               f'mu1({b1}) = {p[2]:.2e} m^2/V/s\n'
+               f'mu2({b2}) = {p[3]:.2e} m^2/V/s')
+    return str_res
