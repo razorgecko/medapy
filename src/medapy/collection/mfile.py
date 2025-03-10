@@ -45,6 +45,26 @@ class ContactPair:
     type: PolarizationType | None = None
     magnitude: Decimal | None = None
 
+    def __copy__(self):
+        return type(self)(first_contact=self.first_contact,
+                          second_contact=self.second_contact,
+                          type=self.type,
+                          magnitude=self.magnitude)
+        
+    def __str__(self) -> str:
+        contacts = f"{self.first_contact}"
+        if self.second_contact is not None:
+            contacts += f"-{self.second_contact}"
+
+        result = f"{self.type.value}{contacts}"
+        if self.magnitude is not None:
+            if self.type == PolarizationType.CURRENT:
+                unit = 'A'
+            else:
+                unit = 'V'
+            result += f"({self.magnitude:.1e}{unit})"
+        return result
+    
     def __post_init__(self):
         if isinstance(self.type, str):
             self.type = PolarizationType(self.type)
@@ -62,18 +82,6 @@ class ContactPair:
         self.magnitude = self._convert_magntude(magnitude) if magnitude else None
         return True
     
-    def _convert_magntude(self, magnitude):
-        return Decimal(magnitude.replace('f', 'e-15')
-                       .replace('p', 'e-12')
-                       .replace('n', 'e-9')
-                       .replace('u', 'e-6')
-                       .replace('m', 'e-3')
-                       .replace('k', 'e3')
-                       .replace('M', 'e6')
-                       .replace('G', 'e9')
-                       .replace('T', 'e12')
-                       .rstrip('AV'))
-    
     def pair_matches(self, pair: Iterable[int] | int | 'ContactPair') -> bool:
         if isinstance(pair, int):
             return (self.first_contact == pair and 
@@ -86,20 +94,21 @@ class ContactPair:
     def to_tuple(self):
         return (self.first_contact, self.second_contact,
                 self.type, self.magnitude)
-        
-    def __str__(self) -> str:
-        contacts = f"{self.first_contact}"
-        if self.second_contact is not None:
-            contacts += f"-{self.second_contact}"
-
-        result = f"{self.type.value}{contacts}"
-        if self.magnitude is not None:
-            if self.type == PolarizationType.CURRENT:
-                unit = 'A'
-            else:
-                unit = 'V'
-            result += f"({self.magnitude:.1e}{unit})"
-        return result
+    
+    def copy(self):
+        return self.__copy__()
+    
+    def _convert_magntude(self, magnitude):
+        return Decimal(magnitude.replace('f', 'e-15')
+                       .replace('p', 'e-12')
+                       .replace('n', 'e-9')
+                       .replace('u', 'e-6')
+                       .replace('m', 'e-3')
+                       .replace('k', 'e3')
+                       .replace('M', 'e6')
+                       .replace('G', 'e9')
+                       .replace('T', 'e12')
+                       .rstrip('AV'))
 
 @dataclass(frozen=False)
 class MeasurementFile:
@@ -148,6 +157,10 @@ class MeasurementFile:
         self.parameters = dict()
         self._parse_filename()
 
+    @property
+    def name(self) -> str:
+        return self.path.name
+    
     def check(self,
               contacts: tuple[int, int] | list[tuple[int, int] | int] | int | None = None,
               polarization: str | None = None,
@@ -276,11 +289,10 @@ class MeasurementFile:
                     self.parameters[param_name] = param
                 continue
     
-    def merge(
-        self,
-        other: 'MeasurementFile',
-        strict_mode: bool = False
-        ) -> 'MeasurementFile':
+    def merge(self,
+              other: 'MeasurementFile',
+              strict_mode: bool = False,
+              ) -> 'MeasurementFile':
         """
         Merge this file representation with another one.
 
@@ -289,7 +301,7 @@ class MeasurementFile:
             strict_mode: If True, verify all parameters are equal before merging
 
         Returns:
-            A new FileRepresentation with merged parameters and contact pairs
+            A new MeasurementFile with merged parameters and contact pairs
 
         Raises:
             ValueError: If strict_mode is True and parameters differ between files
@@ -302,18 +314,12 @@ class MeasurementFile:
                     # Check if parameters are equal
                     if (param.state != other_param.state):
                         raise ValueError(f"Parameter '{param_name}' differs between files in strict mode")
-
-        # Merge parameter definitions (self take precedence in case of conflict)
-        # merged_definitions = {}
-        # merged_definitions.update(other.param_definitions)
-        # merged_definitions.update(self.param_definitions)
-        # definitions_list = list(merged_definitions.values())
                 
         # Merge parameters (self take precedence in case of conflict)
         merged_parameters = {}
         merged_parameters.update(other.parameters)
         merged_parameters.update(self.parameters)
-        parameters_list = [param.copy() for param in merged_parameters.values()]
+        parameters_list = [param for param in merged_parameters.values()]
         
         # Merge contact pairs (removing duplicates)
         merged_contacts = []
@@ -323,43 +329,105 @@ class MeasurementFile:
         for contact in self.contact_pairs:
             key = contact.to_tuple()
             if key not in seen_contacts:
-                merged_contacts.append(contact)
+                merged_contacts.append(contact.copy())
                 seen_contacts.add(key)
 
         # Add contacts from other
         for contact in other.contact_pairs:
             key = contact.to_tuple()
             if key not in seen_contacts:
-                merged_contacts.append(contact)
+                merged_contacts.append(contact.copy())
                 seen_contacts.add(key)
 
         # Create a new MeasurementFile with merged data
         # Use the separator from the current instance
         merged_file = type(self)(
-            path=self.path,  # Path will be set by the caller
+            path=self.path,
             parameters=parameters_list,
             separator=self.separator
         )
         merged_file.contact_pairs = merged_contacts
-
+        
+        merged_filename = merged_file.generate_filename()
+        merged_file.path = merged_file.path.parent / merged_filename
         return merged_file
-
+    
+    def rename(self,
+               directory: str | Path | None = None,
+               name: str | Path | None = None,
+               prefix: str | None = None,
+               postfix: str | None = None,
+               sep: str | None = None,
+               ext: str | None = None
+               ) -> None:
+        # Change separator
+        if sep:
+            self.separator = sep
+        
+        # Generate new path
+        self.path = self._generate_path(directory=directory, name=name,
+                                        prefix=prefix, postfix=postfix,
+                                        sep=sep, ext=ext)
+    
+    def _generate_path(self,
+                       directory: str | Path | None = None,
+                       name: str | Path | None = None,
+                       prefix: str | None = None,
+                       postfix: str | None = None,
+                       sep: str | None = None,
+                       ext: str | None = None
+                       ) -> Path:
+        if not directory:
+            directory = self.path.parent
+        directory = Path(directory).expanduser()
+        
+        if not name:
+            name = self.path.stem
+        
+        if sep:
+            name = name.replace(self.separator, sep)
+            self.separator = sep
             
-    def generate_filename(
-        self,
-        prefix: str = None,
-        postfix: str = None,
-        sep: str = None,
-        ext: str = ".dat"
-    ) -> str:
+        if prefix:
+            name = self.separator.join([prefix, name])
+            
+        if postfix:
+            name = self.separator.join([name, postfix])
+            
+        if ext and not ext.startswith('.'):
+            ext = f".{ext}"
+        elif ext is None:
+            ext = self.path.suffix
+        else:
+            ext = ''
+        
+        return directory / f"{name}{ext}"
+    
+    def copy(self):
+        return self.__copy__()
+        
+    def __copy__(self):
+        new = type(self)(
+            path=self.path,
+            parameters=[param for param in self.parameters.values()],
+            separator=self.separator)
+        new.contact_pairs = [pair.copy() for pair in self.contact_pairs]
+        return new
+            
+    def generate_filename(self,
+                          prefix: str = None,
+                          postfix: str = None,
+                          sep: str = None,
+                          ext: str = None
+                          ) -> str:
         """
         Generate a filename based on stored parameters and contact pairs.
 
         Args:
             prefix: Optional prefix for the filename
             postfix: Optional postfix for the filename
-            separator: Optional separator (defaults to instance separator if None)
-            extension: File extension (defaults to .dat)
+            sep: Optional separator (instance separator if None)
+            ext: File extension (instance extension if None)
 
         Returns:
             A string representing the new filename
@@ -403,5 +471,9 @@ class MeasurementFile:
         # Add extension if it doesn't already have one
         if ext and not ext.startswith('.'):
             ext = f".{ext}"
+        elif ext is None:
+            ext = self.path.suffix
+        else:
+            ext = ''
 
         return f"{filename}{ext}"

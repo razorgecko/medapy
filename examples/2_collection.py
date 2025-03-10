@@ -65,13 +65,28 @@ testfile = MeasurementFile(testname, parameters=[field_param, temp_param])
 testname2 = "sample_I1-5(1e-6A)_V3-7_V2-7_V4_V7_I12_sweepField_B-14to14T_T=3.0K_date.csv"
 testfile2 = MeasurementFile(testname2, parameters=[field_param, temp_param])
 
+# Make a copy
+testcopy = testfile.copy()
+
+# Path of the file can be modified without affectint it's parameters
+# This can be useful to save a file to another path
+# All parameters are optional
+testcopy.rename(directory='~', name='newname',
+                prefix='sample', postfix='date', sep='_', ext='dat')
+print(testcopy.path)
+
 # Merge two files
 # If strict mode, checks that parameters of files are equal 
-testfile3 = testfile.merge(testfile2, strict_mode=True)
+merged = testfile.merge(testfile2, strict_mode=True)
+print(merged.path)
+
+# Merged file has filename generated from contacts and parameters
+# Use rename method to add prefix and postfix
+# merged.rename(prefix='sample', postfix='date')
 
 # Generate filename based on contacts configuration and parameters
-# To change separator between name parts, use 'sep' parameter (default - '_')
-f = testfile3.generate_filename(prefix='sample', postfix='merged', ext='csv')
+# To change separator between name parts, use 'sep' parameter
+f = merged.generate_filename(prefix='sample', postfix='merged')
 print(f)
 
 # Print states of parameters parsed from testname 
