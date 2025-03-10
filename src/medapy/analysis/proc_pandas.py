@@ -89,6 +89,23 @@ class DataProcessingAccessor():
         
         return self._if_inplace(result, inplace)
     
+    def filter_range(self,
+                     val_range: npt.ArrayLike,
+                     inside_range: bool = True,
+                     inclusive: str = 'both',
+                     handle_na: str = 'raise',
+                     inplace: bool = False
+                     ) -> pd.DataFrame | None:
+        # Work on a copy of the data
+        df = self._get_df_copy()
+        # Get DataFrame with filtered range
+        result = misc.filter_range_df(df, self.col_x, val_range, inside_range, inclusive, handle_na)
+        # Alternative approach
+        # df.drop(index=df.index.difference(result.index), inplace=True)
+        result.reset_index(drop=True, inplace=True)
+        
+        return self._if_inplace(result, inplace)
+    
     def symmetrize(self,
                 cols: list[str] | str | None = None,
                 *,
