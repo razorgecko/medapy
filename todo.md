@@ -20,6 +20,8 @@
     - [x] by parameter value
     - [ ] by sweep direction
 - [x] Concatenate mfiles (check equal parameters, append contacts)
+    - [ ] sort contact pairs before merging (polarization first, then by contacts values; `__gt__`, `__lt__`)
+    - [ ] allow to drop polarization magnitude
 - [x] Generate filename based on the state (accept sample name, prefix, postfix, extension)
 - [ ] Dump/load collection to/from db
 - [ ] Move/copy files from collection to
@@ -35,8 +37,10 @@
 - [x] Accept columns to interpolate in etr.interpolate 
 - [x] Preserve axes and labels in etr.interpolate result (via proper slicing from 'ms_pandas'?)
 - [x] Parameter 'set_y' to set newly added column as y (?)
+- [ ] Add moving average
 - [ ] Units check in etr.fit_twoband
 - [ ] Save fit results to dataframe metadata (_obj.attrs) in etr
 
 ## misc
-- [ ] Filter_range_arr
+- [x] Filter_range_arr
+- [ ] Moving average

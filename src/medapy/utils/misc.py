@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import numpy as np
 import numpy.typing as npt
@@ -571,8 +571,186 @@ def interpolate(
         y_new = smooth(y_new)
 
     return y_new
+
+def moving_average(
+    array: np.ndarray, 
+    window: int, 
+    edge_mode: str | Callable = 'fill_after',
+    fill_values: float | Iterable[float] = 0.0,
+    force_odd_window: bool = True,
+    align: str = 'center',
+    custom_kernel: np.ndarray | None = None,
+    handle_nan: bool = False,
+    **kwargs
+    ) -> np.ndarray:
+    """
+    Calculate moving average with a centered window.
+
+    Parameters
+    ----------
+    array : array_like
+        Input array to process
+    window : int
+        Size of the moving average window
+    edge_mode : str or callable
+        Method to handle edges: 'fill_after', 'drop', 'repeat', or any numpy.pad mode
+    fill_values : float or tuple
+        Values for filling edges when appropriate
+    force_odd_window : bool
+        If True, ensures window is odd-sized for proper centering
+    align : str
+        When window is even and force_odd_window is False, determines alignment:
+        'center-left', 'center-right', or 'center'
+    custom_kernel : array_like, optional
+        Optional custom kernel for weighted moving average. Will be normalized if sum != 1.0
+    handle_nan : bool
+        If True, handles NaN values in the input array
+    **kwargs : 
+        Additional arguments for numpy.pad
+
+    Returns
+    -------
+    np.ndarray
+        Moving average array of same size as input (unless edge_mode='drop')
+
+    Examples
+    --------
+    # Simple moving average with default settings
+    >>> data = np.array([1, 2, 3, 4, 5])
+    >>> moving_average(data, 3)
+    array([0., 2., 3., 4., 0.])
+
+    # Custom Gaussian kernel
+    >>> from scipy.signal import gaussian
+    >>> gauss_kernel = gaussian(11, 2)
+    >>> moving_average(data, 11, custom_kernel=gauss_kernel, edge_mode='reflect')
+
+    # Even-sized window with specific alignment
+    >>> moving_average(data, 4, force_odd_window=False, align='center-right')
+    """
+    def repeat_pad(vector, pad_width, iaxis, kwargs):
+        width1, width2 = pad_width
+        vector[:width1] = vector[width1:2*width1]
+        vector[-width2:] = vector[-2*width2:-width2]
+        return vector
+
+    valid_pad_modes = ['constant', 'edge', 'linear_ramp',
+                      'maximum', 'mean', 'median', 'minimum',
+                      'reflect', 'symmetric', 'wrap', 'empty']
+    valid_modes = valid_pad_modes + ['repeat', 'fill_after', 'drop']
+    valid_align = ['center', 'center-left', 'center-right']
+
+    # Input validation
+    if not isinstance(window, (int, np.integer)):
+        raise ValueError(f"'window' should be an integer type; got '{type(window)}'")
+    if window < 1:
+        raise ValueError(f"'window' must be at least 1; got {window}")
+    if edge_mode not in valid_modes and not isinstance(edge_mode, Callable):
+        raise ValueError(f"'edge_mode' got an invalid value '{edge_mode}'")
+    if align not in valid_align:
+        raise ValueError(f"'align' must be one of {valid_align}; got '{align}'")
+
+    # Handle input array
+    if handle_nan:
+        array = np.asarray(array)
+        has_nan = np.isnan(array).any()
+    else:
+        array = np.asarray_chkfinite(array)
+        has_nan = False
+
+    # Validate array is 1D
+    if array.ndim != 1:
+        raise ValueError(f"Input array must be 1-dimensional; got {array.ndim} dimensions")
+
+    # Handle even/odd window sizes
+    if window % 2 == 0 and force_odd_window:
+        window = window + 1
+
+    # Determine padding amounts
+    if window % 2 == 0:  # Even window
+        if align == 'center-left':
+            left_pad = window // 2 - 1
+            right_pad = window // 2
+        elif align == 'center-right':
+            left_pad = window // 2
+            right_pad = window // 2 - 1
+        else:  # 'center'
+            # For exact center, we'll use symmetric padding
+            left_pad = right_pad = window // 2
+    else:  # Odd window
+        left_pad = right_pad = window // 2
+
+    # Set up kernel
+    if custom_kernel is None:
+        kernel = np.ones(window) / window
+    else:
+        kernel = np.asarray(custom_kernel)
+        if len(kernel) != window:
+            raise ValueError(f"Custom kernel length ({len(kernel)}) must match window size ({window})")
+        # Normalize kernel if not already normalized
+        if not np.isclose(np.sum(kernel), 1.0):
+            kernel = kernel / np.sum(kernel)
+
+    if edge_mode == 'repeat':
+        edge_mode = repeat_pad
+
+    # Handle NaN values if requested
+    if has_nan and handle_nan:
+        # Replace NaNs with local means or interpolated values
+        mask = np.isnan(array)
+        if np.all(mask):  # All values are NaN
+            return np.full_like(array, np.nan)
+
+        # Simple imputation for demonstration
+        array_copy = array.copy()
+        array_copy[mask] = np.nanmean(array)  # Replace with mean
+        array = array_copy
+
+    # Apply the moving average based on edge mode
+    if edge_mode == 'drop':
+        return np.convolve(array, kernel, mode='valid')
+
+    if edge_mode in valid_pad_modes or isinstance(edge_mode, Callable):
+        # Use numpy's pad functionality
+        array_pad = np.pad(array, (left_pad, right_pad), mode=edge_mode, **kwargs)
+        result = np.convolve(array_pad, kernel, mode='valid')
+        return result
+
+    if edge_mode == 'fill_after':
+        # Compute only the valid part of convolution
+        valid_result = np.convolve(array, kernel, mode='valid')
+        result = np.empty_like(array)
+
+        # Place valid results in the appropriate position
+        result[left_pad:-right_pad] = valid_result
         
-def normalize(y: npt.ArrayLike, by: str | float | int) -> np.ndarray:
+        # Handle fill_values
+        if isinstance(fill_values, (str, bytes)):
+            raise ValueError("'fill_values' must be a number or an iterable of numbers, not a string or bytes")
+        elif not isinstance(fill_values, Iterable):
+            # Single number case
+            fill_values = [fill_values, fill_values]
+        else:
+            # Iterable case - convert to list for easier handling
+            fill_values = list(fill_values)
+            if len(fill_values) == 1:
+                fill_values = fill_values * 2
+            elif len(fill_values) != 2:
+                raise ValueError("'fill_values' as iterable should contain exactly 1 or 2 values; "
+                                f"got {len(fill_values)} values")
+
+            # Check that all values are numeric
+            if not all(isinstance(val, (int, float, np.number)) for val in fill_values):
+                raise ValueError("All values in 'fill_values' must be numbers")
+
+        result[:left_pad] = fill_values[0]
+        result[-right_pad:] = fill_values[1]
+        return result
+
+    # Should never reach here due to earlier validation
+    raise ValueError(f"Unexpected 'edge_mode': {edge_mode}")
+        
+def normalize(y: npt.ArrayLike, by: str | float ) -> np.ndarray:
     """Normalize array by specified value or method.
 
     Args:
