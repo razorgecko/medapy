@@ -1,14 +1,47 @@
 import warnings
+import numbers
 from typing import Any, Callable, Iterable
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from scipy.signal import savgol_filter as scipy_savgol
 
 
 # Python functionality
-def apply(func, **kwargs):
-    if not isinstance(func, Callable):
+def apply_unique(func, **kwargs):
+    """
+    Execute the same function with unique parameters and return a list of results.
+
+    For example, this function allows applying a function to multiple arrays where
+    each array can receive its own set of parameter values. Parameter values
+    for each array should be provided as lists of equal length.
+
+    Parameters
+    ----------
+    func : callable
+        The function to apply.
+    **kwargs : dict
+        Keyword arguments where each value is a list of parameters.
+        Each list must have the same length.
+
+    Returns
+    -------
+    list
+        A list containing the results of executing `func` with its respective parameters.
+
+    Examples
+    --------
+    >>> # some_func(x, param1, param2)
+    >>> apply_unique(some_func, x=[arr1, arr2], param1=['a', 'b'], param2=[1, 2])
+    [result_for_arr1, result_for_arr2]
+
+    Notes
+    -----
+    All parameter lists must have the same length.
+    """
+    
+    if not callable(func):
         raise TypeError("'func' value should be callable")
     first_param = True
     expected_length = None
@@ -28,12 +61,6 @@ def apply(func, **kwargs):
                             f"The '{param}' value '{values_list}' can not be used.")
         except IndexError:
             raise IndexError(f"'{param}' value is empty")
-    
-    # results = []
-    # for row in zip(*kwargs.values()):
-    #     kw_dict = dict(zip(kwargs.keys(), row))
-    #     results.append(func(**kw_dict))
-    # return results
 
     keys = list(kwargs.keys())
     values = zip(*kwargs.values())
@@ -532,7 +559,11 @@ def interpolate(
     smooth : callable, optional
         Smoothing function with signature f(y) -> y_smooth.
         If None, no smoothing is applied.
-
+    handle_na : str, default 'raise'
+        How to handle NaN/Inf values: 'exclude' or 'raise'.
+        If 'exclude', NaN/Inf excluded before range selecting. Returned data will not contain them.
+        Pre-filtering is recommended for more complex NA handling strategies
+    
     Returns
     -------
     array_like
@@ -563,7 +594,7 @@ def interpolate(
         def interp(x, y, x_new): return np.interp(x_new, x, y)
 
     if smooth is not None and not callable(smooth):
-        raise ValueError("smooth_method must be callable")
+        raise ValueError("'smooth' must be callable")
 
     y_new = interp(x, y, x_new)
 
@@ -572,11 +603,174 @@ def interpolate(
 
     return y_new
 
+def savgol_filter(
+    array: npt.ArrayLike,
+    window: int,
+    order: int = 2,
+    edge_mode: str | Callable = 'fill_after',
+    fill_values: float | list[float, float] = np.nan,
+    deriv: int = 0,
+    delta: float = 1.0,
+    force_odd_window: bool = True,
+    align: str = 'center',
+    handle_nan: bool = False,
+    **kwargs
+    ) -> np.ndarray:
+    """
+    Calculate moving average with a centered window.
+
+    Parameters
+    ----------
+    array : array_like
+        Input array to process
+    window : int
+        The length of the filter window.
+        Correspond to window_length of scipy.signal.savgol_filter
+    order : int, default 2
+        The order of the polynomial used to fit the samples; must be less than window.
+        Correspond to polyorder of scipy.signal.savgol_filter
+    edge_mode : str or callable
+        Method to handle edges: 'fill_after', 'drop', 'repeat', or any numpy.pad mode
+    fill_values : float or list, default np.nan
+        Values for filling edges when appropriate
+    deriv : int, default 0
+        The order of the derivative to compute.
+        Correspond to deriv of scipy.signal.savgol_filter
+    delta : float, default 1.0
+        The spacing of the samples to which the filter will be applied.
+        Correspond to delta of scipy.signal.savgol_filter
+    force_odd_window : bool
+        If True, ensures window is odd-sized for proper centering
+    align : str, default 'center'
+        When window is even and force_odd_window is False, determines alignment:
+        'center-left', 'center-right', or 'center'
+    handle_nan : bool
+        If True, handles NaN values in the input array
+    **kwargs : 
+        Additional arguments for numpy.pad
+
+    Returns
+    -------
+    np.ndarray
+        Moving average array of same size as input (unless edge_mode='drop')
+    """
+    # To implement padding and filtering on a lower level see links
+    # https://github.com/scipy/scipy/blob/v1.15.2/scipy/signal/_savitzky_golay.py#L230
+    # https://github.com/scipy/scipy/blob/v1.15.2/scipy/ndimage/_filters.py#L126
+
+    valid_pad_modes = ['constant', 'edge', 'linear_ramp',
+                      'maximum', 'mean', 'median', 'minimum',
+                      'reflect', 'symmetric', 'wrap', 'empty']
+    valid_modes = valid_pad_modes + ['interp', 'repeat', 'fill_after', 'drop']
+    valid_align = ['center', 'center-left', 'center-right']
+
+    # Input validation
+    if not isinstance(window, (int, np.integer)):
+        raise ValueError(f"'window' should be an integer type; got '{type(window)}'")
+    if window < 1:
+        raise ValueError(f"'window' must be at least 1; got {window}")
+    if edge_mode not in valid_modes and not callable(edge_mode):
+        raise ValueError(f"'edge_mode' got an invalid value '{edge_mode}'")
+    align = _validate_option(align, valid_align, 'align')
+    
+    # Handle fill_values
+    if isinstance(fill_values, (str, bytes)):
+        raise ValueError("'fill_values' must be a number or an iterable of numbers, not a string or bytes")
+    elif not isinstance(fill_values, Iterable):
+        # Single number case
+        fill_values = [fill_values, fill_values]
+    else:
+        # Iterable case - convert to list for easier handling
+        fill_values = list(fill_values)
+        if len(fill_values) == 1:
+            fill_values = fill_values * 2
+        elif len(fill_values) != 2:
+            raise ValueError("'fill_values' as iterable should contain exactly 1 or 2 values; "
+                            f"got {len(fill_values)} values")
+
+        # Check that all values are numeric
+        if not all(isinstance(val, numbers.Number) for val in fill_values):
+            raise ValueError("All values in 'fill_values' must be numbers")
+    
+    # Handle input array
+    if handle_nan:
+        array = np.asarray(array)
+        has_nan = np.isnan(array).any()
+    else:
+        array = np.asarray_chkfinite(array)
+        has_nan = False
+
+    # Validate array is 1D
+    if array.ndim != 1:
+        raise ValueError(f"Input array must be 1-dimensional; got {array.ndim} dimensions")
+
+    # Handle even/odd window sizes
+    if window % 2 == 0 and force_odd_window:
+        window = window + 1
+
+    # Determine padding amounts
+    if window % 2 == 0:  # Even window
+        if align == 'center-left':
+            left_pad = window // 2 - 1
+            right_pad = window // 2
+        elif align == 'center-right':
+            left_pad = window // 2
+            right_pad = window // 2 - 1
+        else:  # 'center'
+            # For exact center, symmetric padding
+            left_pad = right_pad = window // 2
+    else:  # Odd window
+        left_pad = right_pad = window // 2
+
+    if edge_mode == 'repeat':
+        edge_mode = _repeat_pad
+
+    # Handle NaN values if requested
+    if has_nan and handle_nan:
+        # Replace NaNs with local means or interpolated values
+        mask = np.isnan(array)
+        if np.all(mask):  # All values are NaN
+            return np.full_like(array, np.nan)
+
+        # Simple imputation
+        array_copy = array.copy()
+        array_copy[mask] = np.nanmean(array)  # Replace with mean
+        array = array_copy
+
+    # Pad array and apply Savitzky-Golay filter
+    if edge_mode in valid_pad_modes or callable(edge_mode):
+        # Use numpy's pad functionality
+        array_pad = np.pad(array, (left_pad, right_pad), mode=edge_mode, **kwargs)
+        result = scipy_savgol(array_pad, window_length=window, polyorder=order,
+                              deriv=deriv, delta=delta, mode='interp')
+        return result[left_pad:-right_pad]
+    
+    # Apply Savitzky-Golay without padding
+    result = scipy_savgol(array, window_length=window, polyorder=order,
+                              deriv=deriv, delta=delta, mode='interp')
+    if edge_mode == 'interp':
+        return result
+    
+    elif edge_mode == 'drop':
+        return result[left_pad:-right_pad]
+    
+    elif edge_mode == 'fill_after':
+        # Compute only the valid part of convolution
+        result = scipy_savgol(array, window_length=window, polyorder=order,
+                              deriv=deriv, delta=delta, mode='interp')
+        # Fill edges with values
+        result[:left_pad] = fill_values[0]
+        result[-right_pad:] = fill_values[1]
+        return result
+    
+    # Should never reach here due to earlier validation
+    raise ValueError(f"Unexpected 'edge_mode': {edge_mode}")
+
 def moving_average(
-    array: np.ndarray, 
+    array: npt.ArrayLike, 
     window: int, 
     edge_mode: str | Callable = 'fill_after',
-    fill_values: float | Iterable[float] = 0.0,
+    fill_values: float | list[float, float] = np.nan,
     force_odd_window: bool = True,
     align: str = 'center',
     custom_kernel: np.ndarray | None = None,
@@ -594,7 +788,7 @@ def moving_average(
         Size of the moving average window
     edge_mode : str or callable
         Method to handle edges: 'fill_after', 'drop', 'repeat', or any numpy.pad mode
-    fill_values : float or tuple
+    fill_values : float or list, default np.nan
         Values for filling edges when appropriate
     force_odd_window : bool
         If True, ensures window is odd-sized for proper centering
@@ -628,12 +822,6 @@ def moving_average(
     # Even-sized window with specific alignment
     >>> moving_average(data, 4, force_odd_window=False, align='center-right')
     """
-    def repeat_pad(vector, pad_width, iaxis, kwargs):
-        width1, width2 = pad_width
-        vector[:width1] = vector[width1:2*width1]
-        vector[-width2:] = vector[-2*width2:-width2]
-        return vector
-
     valid_pad_modes = ['constant', 'edge', 'linear_ramp',
                       'maximum', 'mean', 'median', 'minimum',
                       'reflect', 'symmetric', 'wrap', 'empty']
@@ -645,11 +833,29 @@ def moving_average(
         raise ValueError(f"'window' should be an integer type; got '{type(window)}'")
     if window < 1:
         raise ValueError(f"'window' must be at least 1; got {window}")
-    if edge_mode not in valid_modes and not isinstance(edge_mode, Callable):
+    if edge_mode not in valid_modes and not callable(edge_mode):
         raise ValueError(f"'edge_mode' got an invalid value '{edge_mode}'")
-    if align not in valid_align:
-        raise ValueError(f"'align' must be one of {valid_align}; got '{align}'")
+    align = _validate_option(align, valid_align, 'align')
 
+    # Handle fill_values
+    if isinstance(fill_values, (str, bytes)):
+        raise ValueError("'fill_values' must be a number or an iterable of numbers, not a string or bytes")
+    elif not isinstance(fill_values, Iterable):
+        # Single number case
+        fill_values = [fill_values, fill_values]
+    else:
+        # Iterable case - convert to list for easier handling
+        fill_values = list(fill_values)
+        if len(fill_values) == 1:
+            fill_values = fill_values * 2
+        elif len(fill_values) != 2:
+            raise ValueError("'fill_values' as iterable should contain exactly 1 or 2 values; "
+                            f"got {len(fill_values)} values")
+
+        # Check that all values are numeric
+        if not all(isinstance(val, numbers.Number) for val in fill_values):
+            raise ValueError("All values in 'fill_values' must be numbers")
+    
     # Handle input array
     if handle_nan:
         array = np.asarray(array)
@@ -692,7 +898,7 @@ def moving_average(
             kernel = kernel / np.sum(kernel)
 
     if edge_mode == 'repeat':
-        edge_mode = repeat_pad
+        edge_mode = _repeat_pad
 
     # Handle NaN values if requested
     if has_nan and handle_nan:
@@ -701,7 +907,7 @@ def moving_average(
         if np.all(mask):  # All values are NaN
             return np.full_like(array, np.nan)
 
-        # Simple imputation for demonstration
+        # Simple imputation
         array_copy = array.copy()
         array_copy[mask] = np.nanmean(array)  # Replace with mean
         array = array_copy
@@ -710,7 +916,7 @@ def moving_average(
     if edge_mode == 'drop':
         return np.convolve(array, kernel, mode='valid')
 
-    if edge_mode in valid_pad_modes or isinstance(edge_mode, Callable):
+    if edge_mode in valid_pad_modes or callable(edge_mode):
         # Use numpy's pad functionality
         array_pad = np.pad(array, (left_pad, right_pad), mode=edge_mode, **kwargs)
         result = np.convolve(array_pad, kernel, mode='valid')
@@ -723,25 +929,6 @@ def moving_average(
 
         # Place valid results in the appropriate position
         result[left_pad:-right_pad] = valid_result
-        
-        # Handle fill_values
-        if isinstance(fill_values, (str, bytes)):
-            raise ValueError("'fill_values' must be a number or an iterable of numbers, not a string or bytes")
-        elif not isinstance(fill_values, Iterable):
-            # Single number case
-            fill_values = [fill_values, fill_values]
-        else:
-            # Iterable case - convert to list for easier handling
-            fill_values = list(fill_values)
-            if len(fill_values) == 1:
-                fill_values = fill_values * 2
-            elif len(fill_values) != 2:
-                raise ValueError("'fill_values' as iterable should contain exactly 1 or 2 values; "
-                                f"got {len(fill_values)} values")
-
-            # Check that all values are numeric
-            if not all(isinstance(val, (int, float, np.number)) for val in fill_values):
-                raise ValueError("All values in 'fill_values' must be numbers")
 
         result[:left_pad] = fill_values[0]
         result[-right_pad:] = fill_values[1]
@@ -764,7 +951,7 @@ def normalize(y: npt.ArrayLike, by: str | float ) -> np.ndarray:
     if not y_arr.size:
         return y_arr
 
-    if isinstance(by, (int, float)):
+    if isinstance(by, numbers.Number):
         val_norm = by
     elif by == 'first':
         val_norm = y_arr[0]
@@ -1049,6 +1236,15 @@ def find_sym_points_indices(sequence, split_point=0, atol=1e-8):
     return np.sort(np.concatenate([left_idx, right_idx]))
 
 # Protected functions
+def _repeat_pad(vector, pad_width, iaxis, kwargs):
+    """
+    Custom method of padding for numpy.pad; repeats edge values. 
+    """
+    width1, width2 = pad_width
+    vector[:width1] = vector[width1:2*width1]
+    vector[-width2:] = vector[-2*width2:-width2]
+    return vector
+
 def _validate_val_range(val_range: npt.ArrayLike) -> tuple[float, float]:
     """
     Validate and convert range input to a tuple of (left, right) bounds.
@@ -1276,5 +1472,5 @@ def _validate_option(value, allowed_values, param_name):
     """
     if value not in allowed_values:
         options_str = "', '".join(str(v) for v in allowed_values)
-        raise ValueError(f"{param_name} must be one of: '{options_str}'")
+        raise ValueError(f"'{param_name}' must be one of: '{options_str}'")
     return value

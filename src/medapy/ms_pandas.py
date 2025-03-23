@@ -1066,7 +1066,48 @@ class MeasurementSheetAccessor:
             self._unit_pattern = self.DEFAULT_UNIT_PATTERN
     
     # Protected methods
-    def _set_column(self, column, values=None, unit=None, axis=None, label=None):
+    def _set_column_states(self, columns, values=None, units=None, axes=None, labels=None) -> None:
+        """
+        Set values and metadata for a dataframe columns.
+        Helper method to use with other accessors 
+
+        Parameters
+        ----------
+        columns : str
+            Name of the columns to modify.
+        values : list[array-like], optional
+            Values to assign to the columns.
+        units : list[str], optional
+            Units to set for the columns.
+        axes : list[str], optional
+            Axes to set for the columns.
+        labels : list[str], optional
+            Labels to add to the columns.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Only performs operations for non-None parameters.
+        """
+        n_cols = len(columns)
+        
+        # Set default lists if None
+        if values is None:
+            values = [None] * n_cols
+        if units is None:
+            units = [None] * n_cols
+        if axes is  None:
+            axes = [None] * n_cols
+        if labels is None:
+            labels = [None] * n_cols
+            
+        for (col, val, unt, axs, lbl) in zip(columns, values, units, axes, labels):
+            self._set_column_state(column=col, values=val, unit=unt, axis=axs, label=lbl)
+    
+    def _set_column_state(self, column, values=None, unit=None, axis=None, label=None) -> None:
         """
         Set values and metadata for a dataframe column.
         Helper method to use with other accessors 

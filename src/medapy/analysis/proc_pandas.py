@@ -5,7 +5,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-import medapy.utils.misc as misc
+from medapy.utils import misc
 
 
 @pd.api.extensions.register_dataframe_accessor("proc")
@@ -134,6 +134,10 @@ class DataProcessingAccessor():
         -------
         pd.DataFrame or None
             Modified DataFrame or None if inplace=True.
+            
+        Notes
+        -----
+        See documentation for misc.symmetrize.
         """
         # Default to y axis column if None provided
         cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
@@ -144,24 +148,22 @@ class DataProcessingAccessor():
         units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
         set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
         add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
-        appendices = self._prepare_values_list(append, default='', n=n_cols)
 
         # Generate new column names
-        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+        new_cols = [self._col_name_append(col, append) for col in cols]
 
         # Work on a copy of the data
         df = self._get_df_copy() 
         
         # Calculate symmetrized values
-        new_values = misc.apply(misc.symmetrize, seq=[df.ms[col] for col in cols])
+        new_values = [misc.symmetrize(df.ms[col]) for col in cols]
 
         # Assign values and metadata
-        misc.apply(df.ms._set_column,
-                column=new_cols,
-                values=new_values,
-                unit=units,
-                axis=set_axes,
-                label=add_labels)
+        df.ms._set_column_states(columns=new_cols,
+                                 values=new_values,
+                                 units=units,
+                                 axes=set_axes,
+                                 labels=add_labels)
 
         return self._if_inplace(df, inplace)
     
@@ -193,6 +195,10 @@ class DataProcessingAccessor():
         -------
         pd.DataFrame or None
             Modified DataFrame or None if inplace=True.
+            
+        Notes
+        -----
+        See documentation for misc.antisymmetrize.
         """
         # Default to y axis column if None provided
         cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
@@ -203,24 +209,22 @@ class DataProcessingAccessor():
         units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
         set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
         add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
-        appendices = self._prepare_values_list(append, default='', n=n_cols)
 
         # Generate new column names
-        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+        new_cols = [self._col_name_append(col, append) for col in cols]
 
         # Work on a copy of the data
         df = self._get_df_copy()
         
         # Calculate antisymmetrized values
-        new_values = misc.apply(misc.antisymmetrize, seq=[df.ms[col] for col in cols])
+        new_values = [misc.antisymmetrize(df.ms[col]) for col in cols]
 
         # Assign values and metadata
-        misc.apply(df.ms._set_column,
-                column=new_cols,
-                values=new_values,
-                unit=units,
-                axis=set_axes,
-                label=add_labels)
+        df.ms._set_column_states(columns=new_cols,
+                                 values=new_values,
+                                 units=units,
+                                 axes=set_axes,
+                                 labels=add_labels)
 
         return self._if_inplace(df, inplace)
     
@@ -235,12 +239,11 @@ class DataProcessingAccessor():
                 ) -> pd.DataFrame | None:
         """
         Normalize values in specified columns and optionally create new columns.
-        Resulting values are assumed to be dimensionless.
 
         Parameters
         ----------
         cols : list[str] | str | None
-            Column(s) to symmetrize. If None, y axis column is used.
+            Column(s) to normalize. If None, y axis column is used.
         by : float | str
             Value to use for normalization. Accepts 'first', 'mid', or 'last' as string value
         append : str
@@ -256,6 +259,11 @@ class DataProcessingAccessor():
         -------
         pd.DataFrame or None
             Modified DataFrame or None if inplace=True.
+            
+        Notes
+        -----
+        Resulting values are assumed to be dimensionless.
+        See documentation for misc.normalize.
         """
         # Default to y axis column if None provided
         cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
@@ -268,24 +276,22 @@ class DataProcessingAccessor():
         units = self._prepare_values_list(None, default='', n=n_cols) # make dimensionless
         set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
         add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
-        appendices = self._prepare_values_list(append, default='', n=n_cols)
 
         # Generate new column names
-        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+        new_cols = [self._col_name_append(col, append) for col in cols]
 
         # Work on a copy of the data
         df = self._get_df_copy()
         
         # Calculate normalized values
-        new_values = misc.apply(misc.normalize, y=[df.ms[col] for col in cols], by=by)
+        new_values = [misc.normalize(df.ms[col], by=by) for col in cols]
 
         # Assign values and metadata
-        misc.apply(df.ms._set_column,
-                column=new_cols,
-                values=new_values,
-                unit=units,
-                axis=set_axes,
-                label=add_labels)
+        df.ms._set_column_states(columns=new_cols,
+                                 values=new_values,
+                                 units=units,
+                                 axes=set_axes,
+                                 labels=add_labels)
 
         return self._if_inplace(df, inplace)
     
@@ -298,36 +304,237 @@ class DataProcessingAccessor():
         smooth: Callable[[npt.ArrayLike], npt.ArrayLike] | None = None,
         handle_na: str = 'raise',
         inplace: bool = False
-        ) -> pd.DataFrame:
+        ) -> pd.DataFrame | None:
+        """
+        Interpolate and optionally smooth data for specific columns.
+
+        Parameters
+        ----------
+        x_new : array_like
+            Target x coordinates for interpolation.
+        cols : list[str] | str | None
+            Column(s) to interpolate. If None, y axis column is used.
+        interp : callable, optional
+            Custom interpolation function with signature f(x, y, x_new) -> y_new.
+            If None, uses numpy.interp for linear interpolation.
+        smooth : callable, optional
+            Smoothing function with signature f(y) -> y_smooth.
+            If None, no smoothing is applied.
+        handle_na : str, default 'raise'
+            How to handle NaN/Inf values: 'exclude' or 'raise'.
+            If 'exclude', NaN/Inf excluded before range selecting. Returned data will not contain them.
+            Pre-filtering is recommended for more complex NA handling strategies
+        inplace : bool
+            If True, modify the DataFrame in place and return None.
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Modified DataFrame or None if inplace=True.
+            
+        Notes
+        -----
+        See documentation for misc.interpolate.
+        """
         # Default to y axis column if None provided
-        cols = self._prepare_values_list(cols, default=self.col_y)
-        n_cols = len(cols)
+        cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
         
         # Create new df of only chosen columns
         df = self.ms[[self.col_x] + cols]
+
+        # Calculate interpolated values
+        new_values = [
+            misc.interpolate(
+                x=df.ms.x,
+                y=df.ms[col],
+                x_new=x_new,
+                interp=interp,
+                smooth=smooth,
+                handle_na=handle_na)
+            for col in cols]
+        
         # Adjust the size of the column to x values
         df = df.reindex(np.arange(len(x_new)))
         df.ms[self.col_x] = x_new
-
-        # Prepare interpmethod lists
-        xs = [self.x for col in cols] # list of current x values
-        ys = [self.ms[col] for col in cols] # list of current y values
-        x_new = [x_new for col in cols] # list of new x values
-        handle_na = self._prepare_values_list(handle_na, default='raise', n=n_cols)
-        interp = self._prepare_values_list(interp, default=None, n=n_cols)
-        smooth = self._prepare_values_list(smooth, default=None, n=n_cols)
         
-        # Calculate interpolated values
-        new_values = misc.apply(misc.interpolate, x=xs, y=ys, x_new=x_new,
-                                interp=interp, smooth=smooth, handle_na=handle_na)
-
         # Assign values and metadata
-        misc.apply(df.ms._set_column,
-                column=cols,
-                values=new_values)
+        df.ms._set_column_states(columns=cols, values=new_values)
         
         return self._if_inplace(df, inplace)
     
+    def savgol_filter(
+        self,
+        window: int,
+        cols: str | list[str] | None = None,
+        *,
+        order: int = 2,
+        edge_mode: str | Callable = 'fill_after',
+        fill_values: float | list[float, float] = np.nan,
+        append: str = '',
+        set_axes: str | list[str] | None = None,
+        add_labels: str | list[str] | None = None,
+        inplace: bool = False,
+        **kwargs
+        ) -> pd.DataFrame | None:
+        """
+        Apply Savitzky-Golay filter for specified columns.
+        Optionally create new columns with filtered values.
+
+        Parameters
+        ----------
+        window : int
+            The length of the filter window.
+            Correspond to window_length of scipy.signal.savgol_filter
+        cols : list[str] | str | None
+            Column(s) to smooth. If None, y axis column is used.
+        order : int, default 2
+            The order of the polynomial used to fit the samples; must be less than window.
+            Correspond to polyorder of scipy.signal.savgol_filter
+        edge_mode : str, default 'constant'
+            Method to handle edges: see scipy.signal.savgol_filter.
+            Additional option 'drop' is available to drop edge values after filtering
+        fill_values : float or list, default np.nan
+            Values for filling edges when appropriate
+        append : str
+            String to append to column names for new columns. If empty, overwrites original columns.
+        set_axes : str | list[str] | None
+            Axis or axes to set for the new columns.
+        add_labels : str | list[str] | None
+            Label(s) to add to the new columns.
+        inplace : bool
+            If True, modify the DataFrame in place and return None.
+        **kwargs : 
+            Additional arguments for misc.savgol_filter
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Modified DataFrame or None if inplace=True.
+
+        Notes
+        -----
+        See documentation for misc.savgol_filter.
+        """
+        # Default to y axis column if None provided
+        cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
+        n_cols = len(cols)
+
+        # Prepare other parameters
+        # keep existing units
+        units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
+        set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
+        add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
+
+        # Generate new column names
+        new_cols = [self._col_name_append(col, append) for col in cols]
+
+        
+        # Create full dictionary of kwargs for misc.moving_average
+        kwargs.update({'window': window, 'order': order,
+                       'edge_mode': edge_mode, 'fill_values': fill_values})
+        
+        # Work on a copy of the data
+        df = self._get_df_copy()
+        
+        # Calculate moving average values
+        new_values = [misc.savgol_filter(df.ms[col], **kwargs) for col in cols]
+
+        if edge_mode == 'drop':
+            half_window = window // 2
+            df = df.iloc[half_window:-half_window].reset_index(drop=True)
+        
+        # Assign values and metadata
+        df.ms._set_column_states(columns=new_cols,
+                                 values=new_values,
+                                 units=units,
+                                 axes=set_axes,
+                                 labels=add_labels)
+
+        return self._if_inplace(df, inplace)
+    
+    def moving_average(
+        self,
+        window: int, 
+        cols: str | list[str] | None = None,
+        *,
+        edge_mode: str | Callable = 'fill_after',
+        fill_values: float | list[float, float] = np.nan,
+        append: str = '',
+        set_axes: str | list[str] | None = None,
+        add_labels: str | list[str] | None = None,
+        inplace: bool = False,
+        **kwargs
+        ) -> pd.DataFrame | None:
+        """
+        Calculate moving average with a centered window for specified columns.
+        Optionally create new columns with smoothed values.
+
+        Parameters
+        ----------
+        window : int
+            Size of the moving average window
+        cols : list[str] | str | None
+            Column(s) to smooth. If None, y axis column is used.
+        edge_mode : str or callable
+            Method to handle edges: 'fill_after', 'drop', 'repeat', or any numpy.pad mode
+        fill_values : float or list, default np.nan
+            Values for filling edges when appropriate
+        append : str
+            String to append to column names for new columns. If empty, overwrites original columns.
+        set_axes : str | list[str] | None
+            Axis or axes to set for the new columns.
+        add_labels : str | list[str] | None
+            Label(s) to add to the new columns.
+        inplace : bool
+            If True, modify the DataFrame in place and return None.
+        **kwargs : 
+            Additional arguments for misc.moving_average
+
+        Returns
+        -------
+        pd.DataFrame or None
+            Modified DataFrame or None if inplace=True.
+
+        Notes
+        -----
+        See documentation for misc.moving_average.
+        """
+        # Default to y axis column if None provided
+        cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
+        n_cols = len(cols)
+
+        # Prepare other parameters
+        # keep existing units
+        units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
+        set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
+        add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
+
+        # Generate new column names
+        new_cols = [self._col_name_append(col, append) for col in cols]
+
+        # Create full dictionary of kwargs for misc.moving_average
+        kwargs.update({'window': window, 'edge_mode': edge_mode, 'fill_values': fill_values})
+        
+        # Work on a copy of the data
+        df = self._get_df_copy()
+        
+        # Calculate moving average values
+        new_values = [misc.moving_average(df.ms[col], **kwargs) for col in cols]
+
+        if edge_mode == 'drop':
+            half_window = window // 2
+            df = df.iloc[half_window:-half_window].reset_index(drop=True)
+        
+        # Assign values and metadata
+        df.ms._set_column_states(columns=new_cols,
+                                 values=new_values,
+                                 units=units,
+                                 axes=set_axes,
+                                 labels=add_labels)
+
+        return self._if_inplace(df, inplace)
+
+
     # Protected methods
     def _get_df_copy(self) -> pd.DataFrame:
         return self._obj.copy(deep=True) # default deep=True, but to be sure
@@ -376,7 +583,7 @@ class DataProcessingAccessor():
         - If values is a list shorter than n, raises ValueError
         - If values is a list of correct length, returns it unchanged
         """
-        if func is not None and not isinstance(func, Callable):
+        if func is not None and not callable(func):
             raise TypeError("'func' should be Callable or None")
             
         if values is None:
