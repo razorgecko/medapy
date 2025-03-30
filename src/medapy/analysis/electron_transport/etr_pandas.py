@@ -56,7 +56,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
         new_values = etr.r2rho(df.ms[col], kind=kind, t=t, width=width, length=length)
         
         # Assign values and metadata
-        df.ms._set_column(new_col, new_values, unit, set_axis, add_label)
+        df.ms._set_column_state(new_col, new_values, unit, set_axis, add_label)
 
         return self._if_inplace(df, inplace)
         
@@ -86,7 +86,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
             # Calculate fit values
             new_values =  misc.make_curve(df.ms.x, coefs)
             # Assign values and metadata
-            df.ms._set_column(new_col, new_values, unit, set_axis, add_label)
+            df.ms._set_column_state(new_col, new_values, unit, set_axis, add_label)
 
         return coefs, self._if_inplace(df, inplace)
         
@@ -137,7 +137,7 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
             # Calculate fit values
             new_values = func_2bnd(df.ms.x, *coefs)
             # Assign values and metadata
-            df.ms._set_column(new_col, new_values, unit, set_axis, add_label)
+            df.ms._set_column_state(new_col, new_values, unit, set_axis, add_label)
 
         return coefs, self._if_inplace(df, inplace)
     
@@ -161,10 +161,9 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
         units = self._prepare_values_list(cols, default='', func=self.ms.get_unit, n=n_cols)
         set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
         add_labels = self._prepare_values_list(add_labels, default=None, n=n_cols)
-        appendices = self._prepare_values_list(append, default='2bnd', n=n_cols, func=lambda x: x + bands)
         
         # Generate new column names
-        new_cols = misc.apply(self._col_name_append, column=cols, append=appendices)
+        new_cols = [self._col_name_append(col, append + bands) for col in cols]
         
         # Prepare twoband functions list
         def kind2func(kind, bands):
@@ -184,12 +183,12 @@ class ElectricalTransportAccessor(DataProcessingAccessor):
         new_values = [func(self.x, *p) for func in funcs]
 
         # Assign values and metadata
-        misc.apply(df.ms._set_column,
-                column=new_cols,
-                values=new_values,
-                unit=units,
-                axis=set_axes,
-                label=add_labels)
+        df.ms._set_column_states(
+            columns=new_cols,
+            values=new_values,
+            units=units,
+            axes=set_axes,
+            labels=add_labels)
         
         return self._if_inplace(df, inplace)
 

@@ -224,7 +224,7 @@ class MeasurementFile:
         if not isinstance(value, Iterable):
             if param.state.is_swept:
                 return False
-            return param.state.value == param._value2decimal(value)
+            return param.state.value == param._value2decimal(str(value))
 
         # Handle range
         try:

@@ -269,9 +269,6 @@ class DataProcessingAccessor():
         cols = self._prepare_values_list(cols, default=self.col_y, func=self.ms.get_column)
         n_cols = len(cols)
         
-        # Prepare normalization values
-        by = self._prepare_values_list(by, default=None, n=n_cols)
-        
         # Prepare other parameters
         units = self._prepare_values_list(None, default='', n=n_cols) # make dimensionless
         set_axes = self._prepare_values_list(set_axes, default=None, n=n_cols)
