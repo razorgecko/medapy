@@ -42,32 +42,36 @@ class ContactPair:
     # For single contact, second_contact will be None
     first_contact: int | None = None
     second_contact: int | None = None
-    type: PolarizationType | None = None
+    polarization: PolarizationType | None = None
     magnitude: Decimal | None = None
 
     def __copy__(self):
         return type(self)(first_contact=self.first_contact,
                           second_contact=self.second_contact,
-                          type=self.type,
+                          polarization=self.polarization,
                           magnitude=self.magnitude)
         
     def __str__(self) -> str:
-        contacts = f"{self.first_contact}"
+        result = f"{self.first_contact}"
         if self.second_contact is not None:
-            contacts += f"-{self.second_contact}"
+            result += f"-{self.second_contact}"
 
-        result = f"{self.type.value}{contacts}"
-        if self.magnitude is not None:
-            if self.type == PolarizationType.CURRENT:
-                unit = 'A'
-            else:
-                unit = 'V'
-            result += f"({self.magnitude:.1e}{unit})"
+        if self.polarization is not None:
+            result = f"{self.polarization.value}" + result
+
+            if self.magnitude is not None:
+                if self.polarization == PolarizationType.CURRENT:
+                    unit = 'A'
+                else:
+                    unit = 'V'
+                result += "({magn:{fmt}}{unit})".format(magn=self.magnitude,
+                                                        fmt='.2g' if 0.01 <= self.magnitude <= 100 else '.1e',
+                                                        unit=unit)
         return result
     
     def __post_init__(self):
-        if isinstance(self.type, str):
-            self.type = PolarizationType(self.type)
+        if isinstance(self.polarization, str):
+            self.polarization = PolarizationType(self.polarization)
         if isinstance(self.magnitude, (str, int, float)):
             self.magnitude = Decimal(str(self.magnitude))
     
@@ -78,7 +82,7 @@ class ContactPair:
         type_str, first, second, magnitude = m.groups()
         self.first_contact = int(first)
         self.second_contact = int(second) if second else None
-        self.type = PolarizationType(type_str)
+        self.polarization = PolarizationType(type_str)
         self.magnitude = self._convert_magntude(magnitude) if magnitude else None
         return True
     
@@ -93,11 +97,17 @@ class ContactPair:
     
     def to_tuple(self):
         return (self.first_contact, self.second_contact,
-                self.type, self.magnitude)
+                self.polarization, self.magnitude)
     
     def copy(self):
         return self.__copy__()
     
+    def polarized(self, polarization, magnitude=None):
+        return type(self)(self.first_contact,
+                          self.second_contact,
+                          polarization=polarization,
+                          magnitude=magnitude)
+
     def _convert_magntude(self, magnitude):
         return Decimal(magnitude.replace('f', 'e-15')
                        .replace('p', 'e-12')
@@ -109,6 +119,9 @@ class ContactPair:
                        .replace('G', 'e9')
                        .replace('T', 'e12')
                        .rstrip('AV'))
+    
+    def __hash__(self):
+        return hash((self.first_contact, self.second_contact, self.polarization, self.magnitude))
 
 @dataclass(frozen=False)
 class MeasurementFile:
