@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from itertools import zip_longest
 import re
 from enum import Enum
 from pathlib import Path
@@ -177,7 +178,8 @@ class MeasurementFile:
     def check(self,
               contacts: tuple[int, int] | list[tuple[int, int] | int] | int | None = None,
               polarization: str | None = None,
-              sweep_direction: str | None = None,
+              sweeps: list[str] | str | None = None,
+              sweep_directions: list[str | None] | str | None = None,
               **parameter_filters: dict) -> bool:
         """Check if file matches all filter conditions"""
                 
@@ -192,8 +194,8 @@ class MeasurementFile:
                 return False
 
         # Check sweep direction
-        if sweep_direction is not None:
-            if not self.check_sweep_direction(sweep_direction):
+        if sweeps is not None:
+            if not self.check_sweeps(sweeps, sweep_directions):
                 return False
 
         # Check parameter filters
@@ -204,18 +206,38 @@ class MeasurementFile:
         return True
 
     def check_polarization(self, polarization: str):
-        return any(pair.type == polarization for pair in self.contact_pairs)
+        return any(pair.polarization == polarization for pair in self.contact_pairs)
     
-    def check_sweep_direction(self, sweep_direction: str):
-        return any(param.state.sweep_direction == sweep_direction 
-                    for param in self.parameters.values())
+    def check_sweeps(self, sweeps: list[str] | str, directions: list[str | None] | str | None = None):
+        if not isinstance(sweeps, (list, tuple)):
+            sweeps = [sweeps]
+        if not isinstance(directions, (list, tuple)):
+            directions = [directions]
+        if len(sweeps) < len(directions):
+            raise ValueError(f"Number of sweeps ({len(sweeps)}) is smaller "
+                             f"than number of directions ({len(directions)})")
+        sweeps_and_dirs = zip_longest(sweeps, directions)
+        
+        return all(self.check_sweep(*sweep) for sweep in sweeps_and_dirs)
+    
+    def check_sweep(self, sweep: str | None, direction: str | None = None):
+        param = self.parameters.get(sweep)
+        if not param:
+            return False
+        
+        is_swept = param.state.is_swept
+        if not direction:
+            return is_swept
+        
+        is_correct_direction = param.state.sweep_direction == direction
+        return is_swept and is_correct_direction
             
     def check_contacts(self,
                        contacts: tuple[int, int] | list[tuple[int, int] | int] | int) -> bool:
         """Check if file contains specified contact configuration"""
 
         # Convert single pair/contact to list
-        if not isinstance(contacts, list):
+        if not isinstance(contacts, (list, tuple)):
             contacts = [contacts]
 
         # Check if all specified contacts/pairs are present
