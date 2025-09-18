@@ -1,10 +1,10 @@
 pub_st = dict()
-pub_st['figure.figsize'] = (9.5, 7)
-pub_st['axes.titlesize'] = 18
-pub_st['axes.labelsize'] = 20
-pub_st['legend.fontsize'] = 14
-pub_st['xtick.labelsize'] = 18
-pub_st['ytick.labelsize'] = 18
+pub_st['figure.figsize'] = (10, 9)
+pub_st['axes.titlesize'] = 18 # 28
+pub_st['axes.labelsize'] = 20 # 24
+pub_st['legend.fontsize'] = 14 # 18
+pub_st['xtick.labelsize'] = 18 # 22
+pub_st['ytick.labelsize'] = 18 # 22
 
 # Set x axis
 pub_st['xtick.direction'] = 'in'
