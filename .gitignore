@@ -15,3 +15,6 @@ _internal_todo.md
 
 # Packages installed in environment
 recs.txt
+
+# Local project config
+pyrightconfig.json
